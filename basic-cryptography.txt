@@ -1,0 +1,5 @@
+I want you to start with to explain what is Cryptography
+
+What's the important in software development first
+
+Then explain in summary how Go standard library supports cryptography features.

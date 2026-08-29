@@ -1,0 +1,2521 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="An interactive introduction to cryptography and Go's standard cryptography library." />
+  <title>Basic Go Cryptography</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #f4f1e8;
+      --muted: #aaa89f;
+      --green: #52d3a5;
+      --cyan: #66cde6;
+      --amber: #f3b95f;
+      --red: #ff7f79;
+      --panel: #171a1c;
+      --line: #34383a;
+      --bg: #0d0f10;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: var(--bg); }
+
+    body {
+      color: var(--ink);
+      font-family: var(--sans);
+      background:
+        radial-gradient(circle at 84% 12%, rgba(82, 211, 165, .09), transparent 27rem),
+        radial-gradient(circle at 8% 88%, rgba(102, 205, 230, .07), transparent 25rem),
+        var(--bg);
+    }
+
+    button, a { font: inherit; }
+    button { color: inherit; }
+
+    .deck { position: relative; width: 100%; height: 100%; isolation: isolate; }
+
+    .deck::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: .18;
+      background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+      background-size: 42px 42px;
+      mask-image: linear-gradient(to bottom, black, transparent 76%);
+      z-index: -1;
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: clamp(1rem, 2.4vh, 2rem);
+      padding: clamp(1.4rem, 4vw, 4.4rem) clamp(1.25rem, 6vw, 6.8rem) clamp(3.8rem, 8vh, 5.5rem);
+      opacity: 0;
+      visibility: hidden;
+      transform: translateX(3rem);
+      transition: opacity 260ms ease, transform 340ms cubic-bezier(.2,.7,.2,1), visibility 0s 340ms;
+    }
+
+    .slide.active {
+      opacity: 1;
+      visibility: visible;
+      transform: none;
+      transition-delay: 0s;
+      z-index: 2;
+    }
+
+    .slide.leaving { transform: translateX(-3rem); }
+
+    .kicker {
+      color: var(--green);
+      font: 700 clamp(.72rem, 1.15vw, .95rem)/1 var(--mono);
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+
+    h1, h2, h3, p { margin: 0; }
+
+    h1 {
+      max-width: 13ch;
+      font-size: clamp(3.4rem, 9.2vw, 8.8rem);
+      line-height: .88;
+      letter-spacing: -.075em;
+      font-weight: 760;
+    }
+
+    h2 {
+      max-width: 18ch;
+      font-size: clamp(2.15rem, 5.2vw, 5.2rem);
+      line-height: .96;
+      letter-spacing: -.055em;
+      font-weight: 730;
+    }
+
+    h3 {
+      font-size: clamp(1.05rem, 1.8vw, 1.65rem);
+      line-height: 1.1;
+      letter-spacing: -.025em;
+    }
+
+    p, li { font-size: clamp(1rem, 1.65vw, 1.55rem); line-height: 1.45; }
+    .small { font-size: clamp(.76rem, 1.1vw, 1rem); color: var(--muted); }
+    .lead { max-width: 47ch; color: #cfcdc5; font-size: clamp(1.15rem, 2vw, 1.8rem); }
+    .accent { color: var(--green); }
+    .cyan { color: var(--cyan); }
+    .amber { color: var(--amber); }
+    .red { color: var(--red); }
+
+    .hero {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: clamp(1.4rem, 3vh, 2.5rem);
+    }
+
+    .title-lockup { display: flex; flex-direction: column; gap: 1.2rem; }
+    .title-meta { display: flex; align-items: center; gap: 1rem; color: var(--muted); font-size: clamp(.8rem, 1.1vw, 1rem); }
+    .title-meta::before { content: ""; width: 3.2rem; height: 2px; background: var(--green); }
+
+    .statement {
+      max-width: 19ch;
+      font-size: clamp(2.2rem, 5.5vw, 5.4rem);
+      line-height: 1.02;
+      letter-spacing: -.055em;
+      font-weight: 660;
+    }
+
+    .split {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(0, .92fr) minmax(0, 1.08fr);
+      gap: clamp(1.5rem, 5vw, 6rem);
+      align-items: center;
+    }
+
+    .stack { display: flex; flex-direction: column; gap: clamp(1rem, 2.5vh, 2rem); }
+
+    .go-braces {
+      display: grid;
+      place-items: center;
+      min-height: 22rem;
+      border-left: 1px solid var(--line);
+      font: 700 clamp(7rem, 20vw, 18rem)/.8 var(--mono);
+      letter-spacing: -.18em;
+      color: transparent;
+      -webkit-text-stroke: 2px rgba(82, 211, 165, .62);
+      text-shadow: 0 0 70px rgba(82,211,165,.16);
+    }
+
+    .go-braces span { transform: translateX(-.1em); }
+
+    .triad {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: clamp(.7rem, 2vw, 1.5rem);
+      align-items: stretch;
+    }
+
+    .principle {
+      position: relative;
+      min-height: clamp(12rem, 34vh, 20rem);
+      padding: clamp(1rem, 2vw, 1.7rem);
+      border-top: 3px solid var(--green);
+      background: linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.018));
+    }
+
+    .principle:nth-child(2) { border-color: var(--cyan); }
+    .principle:nth-child(3) { border-color: var(--amber); }
+    .principle .num { position: absolute; right: 1rem; bottom: .5rem; color: rgba(255,255,255,.06); font: 700 clamp(4rem, 9vw, 8rem)/1 var(--mono); }
+    .principle p { margin-top: 1rem; color: #bbb9b1; }
+
+    .flow {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr auto 1fr;
+      gap: clamp(.6rem, 1.6vw, 1.4rem);
+      align-items: center;
+    }
+
+    .flow-node { padding: clamp(1rem, 2vw, 1.7rem); border: 1px solid var(--line); background: rgba(255,255,255,.025); }
+    .flow-node strong { display: block; font: 700 clamp(1rem, 1.8vw, 1.5rem)/1.2 var(--mono); }
+    .flow-node span { display: block; margin-top: .7rem; color: var(--muted); font-size: clamp(.8rem, 1.2vw, 1.05rem); line-height: 1.4; }
+    .arrow { color: var(--green); font: 700 clamp(1.4rem, 3vw, 2.7rem)/1 var(--mono); }
+
+    .compare {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: clamp(1rem, 3vw, 2.5rem);
+    }
+
+    .compare > article { padding: clamp(1.1rem, 2.4vw, 2rem); border-top: 2px solid var(--line); background: rgba(255,255,255,.025); }
+    .compare > article:first-child { border-color: var(--cyan); }
+    .compare > article:last-child { border-color: var(--amber); }
+    .compare ul, .clean-list { margin: 1.2rem 0 0; padding: 0; list-style: none; }
+    .compare li, .clean-list li { position: relative; padding-left: 1.4em; margin: .5rem 0; color: #c5c3bb; }
+    .compare li::before, .clean-list li::before { content: "→"; position: absolute; left: 0; color: var(--green); font-family: var(--mono); }
+
+    .formula {
+      padding: clamp(1.1rem, 2vw, 1.7rem);
+      border: 1px solid var(--line);
+      background: #111415;
+      font: 600 clamp(1rem, 2vw, 1.8rem)/1.5 var(--mono);
+      color: #d9d7d0;
+    }
+
+    .package-map {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: .65rem clamp(1rem, 2.6vw, 2.5rem);
+    }
+
+    .pkg {
+      display: grid;
+      grid-template-columns: minmax(8rem, .72fr) 1.28fr;
+      gap: 1rem;
+      padding: clamp(.65rem, 1.25vh, 1rem) 0;
+      border-bottom: 1px solid var(--line);
+      align-items: baseline;
+    }
+
+    code { font-family: var(--mono); }
+    .pkg code { color: var(--green); font-size: clamp(.8rem, 1.2vw, 1.05rem); font-weight: 700; }
+    .pkg span { color: #c3c1b9; font-size: clamp(.78rem, 1.15vw, 1rem); line-height: 1.35; }
+
+    pre {
+      margin: 0;
+      min-height: 0;
+      overflow: auto;
+      padding: clamp(1rem, 2vw, 1.8rem);
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--green);
+      background: #090b0c;
+      color: #d8d6ce;
+      font: 500 clamp(.7rem, 1.15vw, 1.06rem)/1.55 var(--mono);
+      tab-size: 4;
+    }
+
+    .kw { color: #ff8fa3; }
+    .str { color: #b8d982; }
+    .fn { color: #70c8ff; }
+    .cm { color: #777c7d; }
+
+    .warning {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 1.2rem;
+      padding: clamp(1.1rem, 2vw, 1.6rem);
+      border: 1px solid rgba(255,127,121,.4);
+      background: rgba(255,127,121,.055);
+      align-items: start;
+    }
+
+    .warning .mark { color: var(--red); font: 800 clamp(2rem, 4vw, 3.5rem)/.8 var(--mono); }
+    .warning p { margin-top: .45rem; color: #c8c4bd; }
+
+    .hash-machine {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, .8fr) auto minmax(0, 1.35fr);
+      gap: clamp(.7rem, 1.8vw, 1.5rem);
+      align-items: center;
+    }
+
+    .machine-box {
+      min-width: 0;
+      padding: clamp(1rem, 2vw, 1.65rem);
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.025);
+    }
+
+    .machine-box strong { display: block; margin-bottom: .65rem; font: 700 clamp(.95rem, 1.6vw, 1.35rem)/1.15 var(--mono); }
+    .machine-box code { color: #c8c5bd; font-size: clamp(.72rem, 1.1vw, .96rem); line-height: 1.45; overflow-wrap: anywhere; }
+    .machine-box.function { text-align: center; border-color: rgba(82,211,165,.55); color: var(--green); }
+    .digest { color: var(--cyan) !important; letter-spacing: .035em; }
+
+    .property-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: clamp(.8rem, 2vw, 1.5rem);
+    }
+
+    .property-row article { padding-top: 1rem; border-top: 2px solid var(--line); }
+    .property-row article:nth-child(1) { border-color: var(--green); }
+    .property-row article:nth-child(2) { border-color: var(--cyan); }
+    .property-row article:nth-child(3) { border-color: var(--amber); }
+    .property-row p { margin-top: .6rem; color: var(--muted); font-size: clamp(.82rem, 1.25vw, 1.05rem); }
+
+    .avalanche {
+      display: grid;
+      grid-template-columns: minmax(0, .78fr) auto minmax(0, 1.22fr);
+      gap: clamp(1rem, 2.6vw, 2.4rem);
+      align-items: center;
+    }
+
+    .input-pair { display: grid; gap: .9rem; }
+    .input-line { padding: 1rem 1.2rem; border-left: 3px solid var(--line); background: rgba(255,255,255,.025); font: 650 clamp(.9rem, 1.5vw, 1.3rem)/1.35 var(--mono); }
+    .changed { color: var(--red); text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: .18em; }
+    .digest-pair { display: grid; gap: .9rem; }
+    .digest-line { overflow-wrap: anywhere; color: var(--cyan); font: 600 clamp(.7rem, 1.15vw, 1rem)/1.45 var(--mono); }
+    .digest-line:last-child { color: var(--amber); }
+
+    .use-cases {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: clamp(.8rem, 1.8vw, 1.4rem) clamp(1.2rem, 3vw, 2.8rem);
+    }
+
+    .use-case { display: grid; grid-template-columns: 2.6rem 1fr; gap: 1rem; padding: .9rem 0 1.1rem; border-bottom: 1px solid var(--line); }
+    .use-case .use-num { color: var(--green); font: 700 1rem/1.25 var(--mono); }
+    .use-case p { margin-top: .4rem; color: var(--muted); font-size: clamp(.8rem, 1.2vw, 1.02rem); }
+    .use-case code { display: block; margin-top: .55rem; color: var(--cyan); font-size: clamp(.72rem, 1vw, .9rem); }
+
+    .trust-diagram { display: grid; gap: .55rem; }
+    .trust-row { display: grid; grid-template-columns: minmax(8rem, .6fr) auto minmax(0, 1.4fr); gap: .8rem; align-items: center; }
+    .trust-row .label { color: var(--muted); font: 600 clamp(.75rem, 1.1vw, .95rem)/1.3 var(--mono); }
+    .trust-row .value { padding: .8rem 1rem; background: rgba(255,255,255,.03); overflow-wrap: anywhere; color: var(--cyan); font: 600 clamp(.7rem, 1vw, .9rem)/1.35 var(--mono); }
+    .trust-row.bad .value { color: var(--red); }
+
+    .decision {
+      display: grid;
+      grid-template-columns: minmax(0, .72fr) minmax(0, 1.28fr);
+      gap: clamp(1.4rem, 4vw, 4rem);
+      align-items: start;
+    }
+
+    .decision-list { margin: 0; padding: 0; list-style: none; }
+    .decision-list li { display: grid; grid-template-columns: minmax(9rem, .7fr) 1.3fr; gap: 1rem; padding: .85rem 0; border-bottom: 1px solid var(--line); }
+    .decision-list strong { color: var(--green); font: 700 clamp(.8rem, 1.2vw, 1rem)/1.35 var(--mono); }
+    .decision-list span { color: #c5c2ba; font-size: clamp(.8rem, 1.15vw, 1rem); line-height: 1.4; }
+
+    .hmac-construction { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.15fr); gap: clamp(1rem, 2.5vw, 2.4rem); align-items: center; }
+    .hmac-rounds { display: grid; gap: .8rem; }
+    .hmac-round { padding: clamp(1rem, 2vw, 1.5rem); border-left: 3px solid var(--cyan); background: rgba(102,205,230,.05); }
+    .hmac-round:last-child { border-color: var(--green); background: rgba(82,211,165,.05); }
+    .hmac-round strong { display: block; margin-bottom: .5rem; font: 700 clamp(.85rem, 1.35vw, 1.1rem)/1.2 var(--mono); }
+    .hmac-round code { color: #d1cfc7; font-size: clamp(.72rem, 1.15vw, 1rem); overflow-wrap: anywhere; }
+    .hmac-formula { padding: clamp(1.2rem, 2.4vw, 2rem); border: 1px solid var(--line); background: #090b0c; color: var(--green); font: 650 clamp(.9rem, 1.55vw, 1.35rem)/1.7 var(--mono); overflow-wrap: anywhere; }
+
+    .message-lane { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.2fr) auto minmax(0, 1fr); gap: clamp(.65rem, 1.7vw, 1.4rem); align-items: center; }
+    .lane-node { min-height: 9.5rem; padding: clamp(1rem, 2vw, 1.5rem); border-top: 3px solid var(--green); background: rgba(255,255,255,.025); }
+    .lane-node:nth-of-type(2) { border-color: var(--amber); }
+    .lane-node:nth-of-type(3) { border-color: var(--cyan); }
+    .lane-node strong { display: block; font: 700 clamp(.9rem, 1.35vw, 1.15rem)/1.2 var(--mono); }
+    .lane-node span { display: block; margin-top: .75rem; color: var(--muted); font-size: clamp(.78rem, 1.1vw, .96rem); line-height: 1.4; }
+
+    .cipher-cycle { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, .9fr) auto minmax(0, 1fr); gap: clamp(.7rem, 1.8vw, 1.5rem); align-items: center; }
+    .cipher-node { min-width: 0; padding: clamp(1rem, 2vw, 1.6rem); border: 1px solid var(--line); background: rgba(255,255,255,.025); }
+    .cipher-node strong { display: block; color: var(--cyan); font: 700 clamp(.9rem, 1.4vw, 1.2rem)/1.2 var(--mono); }
+    .cipher-node span { display: block; margin-top: .65rem; color: var(--muted); font-size: clamp(.78rem, 1.1vw, .96rem); line-height: 1.4; }
+    .cipher-node.core { text-align: center; border-color: rgba(82,211,165,.55); }
+    .cipher-node.core strong { color: var(--green); }
+    .key-line { grid-column: 3; justify-self: center; display: inline-flex; align-items: center; gap: .6rem; padding: .55rem .8rem; border: 1px solid rgba(243,185,95,.5); color: var(--amber); font: 700 clamp(.72rem, 1vw, .9rem)/1 var(--mono); }
+
+    .aead-packet { display: grid; grid-template-columns: .7fr 2fr .85fr; border: 1px solid var(--line); min-height: 8rem; }
+    .packet-part { display: flex; flex-direction: column; justify-content: center; gap: .45rem; min-width: 0; padding: clamp(.8rem, 1.8vw, 1.4rem); border-right: 1px solid var(--line); background: rgba(255,255,255,.025); }
+    .packet-part:last-child { border-right: 0; }
+    .packet-part strong { color: var(--green); font: 700 clamp(.8rem, 1.25vw, 1rem)/1.2 var(--mono); }
+    .packet-part:nth-child(2) strong { color: var(--cyan); }
+    .packet-part:nth-child(3) strong { color: var(--amber); }
+    .packet-part span { color: var(--muted); font-size: clamp(.72rem, 1vw, .9rem); line-height: 1.35; }
+
+    .mode-list { display: grid; gap: .6rem; }
+    .mode-row { display: grid; grid-template-columns: minmax(7rem, .55fr) 1.45fr; gap: 1rem; padding: .8rem 0; border-bottom: 1px solid var(--line); }
+    .mode-row strong { font: 700 clamp(.8rem, 1.15vw, 1rem)/1.35 var(--mono); }
+    .mode-row span { color: var(--muted); font-size: clamp(.78rem, 1.1vw, .96rem); line-height: 1.4; }
+
+    .nonce-sequence { display: grid; grid-template-columns: repeat(4, 1fr); gap: .7rem; }
+    .nonce { padding: 1rem .7rem; border: 1px solid var(--line); text-align: center; background: rgba(255,255,255,.025); color: var(--cyan); font: 700 clamp(.72rem, 1.1vw, .95rem)/1.25 var(--mono); }
+    .nonce.reused { border-color: var(--red); color: var(--red); background: rgba(255,127,121,.06); }
+
+    .keypair-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(1rem, 3vw, 2.5rem); }
+    .key-card { position: relative; min-height: clamp(11rem, 28vh, 17rem); padding: clamp(1.1rem, 2.4vw, 2rem); border-top: 3px solid var(--cyan); background: rgba(102,205,230,.045); }
+    .key-card.private { border-color: var(--amber); background: rgba(243,185,95,.045); }
+    .key-card .key-icon { position: absolute; right: 1rem; bottom: .6rem; color: rgba(255,255,255,.07); font: 700 clamp(3.5rem, 8vw, 7rem)/1 var(--mono); }
+    .key-card p { margin-top: .8rem; max-width: 32ch; color: var(--muted); }
+    .key-card code { display: block; margin-top: 1.2rem; color: var(--green); font-size: clamp(.75rem, 1.15vw, 1rem); }
+
+    .asym-flow { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, .95fr) auto minmax(0, 1fr); gap: clamp(.65rem, 1.7vw, 1.4rem); align-items: center; }
+    .asym-node { min-width: 0; padding: clamp(1rem, 2vw, 1.5rem); border: 1px solid var(--line); background: rgba(255,255,255,.025); }
+    .asym-node strong { display: block; color: var(--cyan); font: 700 clamp(.85rem, 1.3vw, 1.1rem)/1.25 var(--mono); }
+    .asym-node.private strong { color: var(--amber); }
+    .asym-node.core { text-align: center; border-color: rgba(82,211,165,.5); }
+    .asym-node.core strong { color: var(--green); }
+    .asym-node span { display: block; margin-top: .6rem; color: var(--muted); font-size: clamp(.75rem, 1.05vw, .92rem); line-height: 1.4; }
+
+    .envelope { display: grid; grid-template-columns: .8fr 1.65fr 1.1fr; border: 1px solid var(--line); }
+    .envelope-part { min-width: 0; padding: clamp(1rem, 2vw, 1.5rem); border-right: 1px solid var(--line); background: rgba(255,255,255,.025); }
+    .envelope-part:last-child { border-right: 0; }
+    .envelope-part strong { display: block; color: var(--green); font: 700 clamp(.78rem, 1.15vw, .98rem)/1.25 var(--mono); }
+    .envelope-part:nth-child(2) strong { color: var(--cyan); }
+    .envelope-part:nth-child(3) strong { color: var(--amber); }
+    .envelope-part span { display: block; margin-top: .55rem; color: var(--muted); font-size: clamp(.72rem, 1vw, .88rem); line-height: 1.35; }
+
+    .handshake { display: grid; grid-template-columns: minmax(0, 1fr) minmax(8rem, .55fr) minmax(0, 1fr); gap: .55rem 1.4rem; align-items: center; }
+    .handshake-party { padding: .8rem 1rem; border-bottom: 2px solid var(--green); color: var(--green); font: 700 clamp(.85rem, 1.25vw, 1.05rem)/1 var(--mono); }
+    .handshake-party:last-child { text-align: right; border-color: var(--cyan); color: var(--cyan); }
+    .handshake-step { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(8rem, .55fr) minmax(0, 1fr); gap: 1.4rem; align-items: center; }
+    .handshake-step .event { padding: .65rem .9rem; background: rgba(255,255,255,.025); color: #c8c5bd; font-size: clamp(.74rem, 1.05vw, .92rem); line-height: 1.35; }
+    .handshake-step .event.server { grid-column: 3; }
+    .handshake-step .wire { color: var(--amber); text-align: center; font: 700 clamp(.7rem, 1vw, .88rem)/1.25 var(--mono); }
+
+    .cert-chain { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(.8rem, 2vw, 1.5rem); align-items: stretch; }
+    .cert-node { position: relative; padding: clamp(1rem, 2vw, 1.6rem); border-top: 3px solid var(--cyan); background: rgba(255,255,255,.025); }
+    .cert-node:nth-child(2) { border-color: var(--green); }
+    .cert-node:nth-child(3) { border-color: var(--amber); }
+    .cert-node::after { content: "→"; position: absolute; right: calc(-.8rem - 1vw); top: 45%; color: var(--green); font: 700 1.5rem/1 var(--mono); }
+    .cert-node:last-child::after { display: none; }
+    .cert-node p { margin-top: .65rem; color: var(--muted); font-size: clamp(.78rem, 1.1vw, .96rem); }
+
+    .cert-sheet { display: grid; grid-template-columns: minmax(0, .72fr) minmax(0, 1.28fr); gap: .5rem 1.2rem; padding: clamp(1rem, 2vw, 1.6rem); border: 1px solid var(--line); background: rgba(255,255,255,.025); }
+    .cert-sheet dt { color: var(--green); font: 700 clamp(.72rem, 1vw, .9rem)/1.35 var(--mono); }
+    .cert-sheet dd { margin: 0; color: #c6c3bb; font-size: clamp(.75rem, 1.05vw, .92rem); line-height: 1.35; }
+
+    .format-map { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem 2rem; }
+    .format-row { display: grid; grid-template-columns: minmax(8rem, .75fr) 1.25fr; gap: 1rem; padding: .7rem 0; border-bottom: 1px solid var(--line); }
+    .format-row code { color: var(--green); font-size: clamp(.72rem, 1vw, .9rem); font-weight: 700; }
+    .format-row span { color: var(--muted); font-size: clamp(.74rem, 1.05vw, .92rem); line-height: 1.35; }
+
+    .phc-string { display: grid; grid-template-columns: .8fr .65fr 1.35fr 1fr 1.15fr; border: 1px solid var(--line); }
+    .phc-part { min-width: 0; padding: clamp(.8rem, 1.6vw, 1.25rem); border-right: 1px solid var(--line); background: rgba(255,255,255,.025); }
+    .phc-part:last-child { border-right: 0; }
+    .phc-part strong { display: block; color: var(--green); font: 700 clamp(.68rem, .95vw, .84rem)/1.25 var(--mono); }
+    .phc-part:nth-child(2) strong, .phc-part:nth-child(4) strong { color: var(--cyan); }
+    .phc-part:nth-child(3) strong, .phc-part:nth-child(5) strong { color: var(--amber); }
+    .phc-part span { display: block; margin-top: .45rem; color: var(--muted); font-size: clamp(.65rem, .9vw, .8rem); line-height: 1.3; overflow-wrap: anywhere; }
+
+    .cost-meter { display: grid; grid-template-columns: repeat(3, 1fr); gap: .8rem; align-items: end; min-height: 12rem; }
+    .cost-bar { display: flex; flex-direction: column; justify-content: flex-end; gap: .5rem; padding: 1rem; border-bottom: 3px solid var(--green); background: linear-gradient(to top, rgba(82,211,165,.12), transparent); }
+    .cost-bar:nth-child(1) { min-height: 6rem; }
+    .cost-bar:nth-child(2) { min-height: 9rem; border-color: var(--cyan); background: linear-gradient(to top, rgba(102,205,230,.12), transparent); }
+    .cost-bar:nth-child(3) { min-height: 12rem; border-color: var(--amber); background: linear-gradient(to top, rgba(243,185,95,.12), transparent); }
+    .cost-bar strong { font: 700 clamp(.78rem, 1.1vw, .95rem)/1.2 var(--mono); }
+    .cost-bar span { color: var(--muted); font-size: clamp(.7rem, .95vw, .84rem); line-height: 1.3; }
+
+    .checklist { counter-reset: check; display: grid; grid-template-columns: 1fr 1fr; gap: .4rem 2.5rem; margin: 0; padding: 0; list-style: none; }
+    .checklist li { counter-increment: check; position: relative; padding: .75rem 0 .75rem 3.4rem; border-bottom: 1px solid var(--line); }
+    .checklist li::before { content: "0" counter(check); position: absolute; left: 0; top: .9rem; color: var(--green); font: 700 .95rem/1 var(--mono); }
+
+    .source-list { display: grid; gap: .65rem; margin: 0; padding: 0; list-style: none; }
+    .source-list a { color: var(--cyan); text-decoration-thickness: 1px; text-underline-offset: .2em; }
+    .source-list span { color: var(--muted); }
+
+    .slide-footer { display: flex; align-items: center; justify-content: space-between; color: #777b7b; font: 600 clamp(.62rem, .9vw, .78rem)/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+
+    .controls {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 20;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      padding: .8rem clamp(1rem, 2.2vw, 2rem);
+      background: linear-gradient(transparent, rgba(8,10,11,.94) 55%);
+      transition: opacity 180ms ease;
+    }
+
+    .controls.idle { opacity: .12; }
+    .progress-track { height: 2px; background: #2b2f30; }
+    .progress { height: 100%; width: 0; background: var(--green); transition: width 240ms ease; }
+    .counter { justify-self: end; font: 700 .75rem/1 var(--mono); color: var(--muted); }
+    .control-group { display: flex; align-items: center; gap: .4rem; }
+
+    .icon-btn {
+      display: grid;
+      place-items: center;
+      min-width: 2.45rem;
+      height: 2.45rem;
+      border: 1px solid var(--line);
+      background: rgba(15,17,18,.9);
+      cursor: pointer;
+    }
+
+    .icon-btn:hover, .icon-btn:focus-visible { border-color: var(--green); outline: none; }
+    .icon-btn:disabled { opacity: .3; cursor: default; }
+
+    .help {
+      position: fixed;
+      inset: auto 1rem 4.5rem auto;
+      z-index: 30;
+      width: min(22rem, calc(100vw - 2rem));
+      padding: 1rem;
+      border: 1px solid var(--line);
+      background: rgba(12,14,15,.98);
+      box-shadow: 0 1.5rem 5rem rgba(0,0,0,.45);
+    }
+
+    .help[hidden] { display: none; }
+    .help dl { display: grid; grid-template-columns: 6.5rem 1fr; gap: .55rem; margin: .8rem 0 0; }
+    .help dt { color: var(--green); font-family: var(--mono); }
+    .help dd { margin: 0; color: var(--muted); }
+
+    @media (max-width: 780px) {
+      .slide { overflow-y: auto; padding-bottom: 5rem; }
+      .split, .compare { grid-template-columns: 1fr; }
+      .triad { grid-template-columns: 1fr; }
+      .principle { min-height: auto; }
+      .flow { grid-template-columns: 1fr; }
+      .arrow { transform: rotate(90deg); justify-self: center; }
+      .package-map, .checklist { grid-template-columns: 1fr; }
+      .hash-machine, .avalanche, .decision { grid-template-columns: 1fr; }
+      .hash-machine .arrow, .avalanche .arrow { transform: rotate(90deg); justify-self: center; }
+      .property-row, .use-cases { grid-template-columns: 1fr; }
+      .hmac-construction, .message-lane { grid-template-columns: 1fr; }
+      .cipher-cycle { grid-template-columns: 1fr; }
+      .key-line { grid-column: 1; }
+      .aead-packet, .nonce-sequence { grid-template-columns: 1fr; }
+      .keypair-grid, .asym-flow, .envelope { grid-template-columns: 1fr; }
+      .handshake, .handshake-step, .cert-chain, .cert-sheet, .format-map { grid-template-columns: 1fr; }
+      .phc-string, .cost-meter { grid-template-columns: 1fr; }
+      .phc-part { border-right: 0; border-bottom: 1px solid var(--line); }
+      .handshake-step { grid-column: 1; }
+      .handshake-step .event.server { grid-column: 1; }
+      .cert-node::after { display: none; }
+      .envelope-part { border-right: 0; border-bottom: 1px solid var(--line); }
+      .packet-part { border-right: 0; border-bottom: 1px solid var(--line); }
+      .go-braces { display: none; }
+      .controls { grid-template-columns: 1fr auto; }
+      .progress-track { grid-column: 1 / -1; grid-row: 2; margin-top: .65rem; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .slide, .progress { transition: none; }
+    }
+
+    @media print {
+      html, body { overflow: visible; background: #0d0f10; }
+      .slide { position: relative; width: 13.333in; height: 7.5in; opacity: 1; visibility: visible; transform: none; break-after: page; }
+      .controls { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="deck" aria-live="polite">
+    <section class="slide active" data-title="Basic Go Cryptography">
+      <div class="kicker">Software security · Go</div>
+      <div class="hero">
+        <div class="title-lockup">
+          <h1>Basic Go<br><span class="accent">Cryptography</span></h1>
+          <p class="lead">How software protects secrets, detects tampering, and proves identity—using Go’s standard library.</p>
+        </div>
+        <div class="title-meta">Use ← → or Space to navigate</div>
+      </div>
+      <footer class="slide-footer"><span>Introduction</span><span>01</span></footer>
+    </section>
+
+    <section class="slide" data-title="What is cryptography?">
+      <div class="kicker">Start with the job</div>
+      <div class="split">
+        <div class="stack">
+          <h2>Cryptography turns <span class="accent">trust</span> into a property of data.</h2>
+          <p class="lead">It uses mathematical algorithms and secret or public keys to protect information—even when the network, storage, or messenger cannot be trusted.</p>
+        </div>
+        <div class="go-braces" aria-hidden="true"><span>{ }</span></div>
+      </div>
+      <footer class="slide-footer"><span>Definition</span><span>02</span></footer>
+    </section>
+
+    <section class="slide" data-title="Why software needs cryptography">
+      <div class="kicker">Why it matters</div>
+      <div class="stack">
+        <h2>Software moves sensitive data through hostile places.</h2>
+        <div class="triad">
+          <article class="principle">
+            <h3>Networks are observable</h3>
+            <p>Attackers may read or change traffic between a client and server.</p>
+            <span class="num">01</span>
+          </article>
+          <article class="principle">
+            <h3>Storage gets copied</h3>
+            <p>Backups, disks, logs, and databases can leak beyond their intended boundary.</p>
+            <span class="num">02</span>
+          </article>
+          <article class="principle">
+            <h3>Identity can be forged</h3>
+            <p>Without proof, a message or update can pretend to come from someone else.</p>
+            <span class="num">03</span>
+          </article>
+        </div>
+      </div>
+      <footer class="slide-footer"><span>Software risk</span><span>03</span></footer>
+    </section>
+
+    <section class="slide" data-title="Security goals">
+      <div class="kicker">Four useful questions</div>
+      <div class="stack">
+        <h2>Choose the primitive by the security goal.</h2>
+        <div class="flow">
+          <div class="flow-node"><strong class="cyan">Confidentiality</strong><span>Who can read it?</span></div>
+          <div class="arrow">→</div>
+          <div class="flow-node"><strong class="amber">Integrity</strong><span>Was it changed?</span></div>
+          <div class="arrow">→</div>
+          <div class="flow-node"><strong class="accent">Authenticity</strong><span>Who produced it?</span></div>
+        </div>
+        <div class="flow-node"><strong>Availability still matters</strong><span>Cryptography cannot keep a service online by itself. Security also needs reliable systems, access control, updates, monitoring, and recovery.</span></div>
+      </div>
+      <footer class="slide-footer"><span>Security properties</span><span>04</span></footer>
+    </section>
+
+    <section class="slide" data-title="Encryption and hashing are different">
+      <div class="kicker">Core building blocks</div>
+      <div class="stack">
+        <h2>Encryption hides. Hashing fingerprints.</h2>
+        <div class="compare">
+          <article>
+            <h3 class="cyan">Encryption</h3>
+            <ul>
+              <li>Transforms plaintext into ciphertext</li>
+              <li>Reversible with the correct key</li>
+              <li>Use authenticated encryption to detect tampering</li>
+            </ul>
+          </article>
+          <article>
+            <h3 class="amber">Cryptographic hash</h3>
+            <ul>
+              <li>Maps any input to a fixed-size digest</li>
+              <li>Designed to be one-way</li>
+              <li>Supports integrity checks, signatures, and IDs</li>
+            </ul>
+          </article>
+        </div>
+        <div class="formula">plaintext + key + nonce → <span class="cyan">ciphertext</span> + <span class="accent">authentication tag</span></div>
+      </div>
+      <footer class="slide-footer"><span>Primitives</span><span>05</span></footer>
+    </section>
+
+    <section class="slide" data-title="Shared keys and public keys">
+      <div class="kicker">Two key models</div>
+      <div class="compare">
+        <article>
+          <h2 class="cyan">One shared secret</h2>
+          <p class="lead">Symmetric cryptography is fast and fits bulk data encryption. Both sides must safely obtain the same key.</p>
+          <ul><li>AES-GCM</li><li>Message authentication with HMAC</li><li>Protecting stored application data</li></ul>
+        </article>
+        <article>
+          <h2 class="amber">A public / private pair</h2>
+          <p class="lead">Asymmetric cryptography separates verification or encryption from the private operation.</p>
+          <ul><li>Digital signatures</li><li>Key agreement</li><li>Certificates and TLS identity</li></ul>
+        </article>
+      </div>
+      <footer class="slide-footer"><span>Key models</span><span>06</span></footer>
+    </section>
+
+    <section class="slide" data-title="Go standard library map">
+      <div class="kicker">Batteries included</div>
+      <div class="stack">
+        <h2>Go organizes cryptography around small, focused packages.</h2>
+        <div class="package-map">
+          <div class="pkg"><code>crypto/rand</code><span>Secure random bytes, keys, tokens</span></div>
+          <div class="pkg"><code>crypto/aes</code><span>AES block cipher</span></div>
+          <div class="pkg"><code>crypto/cipher</code><span>Modes and AEAD interfaces, including GCM</span></div>
+          <div class="pkg"><code>crypto/sha256</code><span>SHA-256 hashing</span></div>
+          <div class="pkg"><code>crypto/hmac</code><span>Keyed message authentication</span></div>
+          <div class="pkg"><code>crypto/ed25519</code><span>Modern digital signatures</span></div>
+          <div class="pkg"><code>crypto/rsa · ecdsa</code><span>Widely deployed public-key algorithms</span></div>
+          <div class="pkg"><code>crypto/ecdh</code><span>Elliptic-curve key agreement</span></div>
+          <div class="pkg"><code>crypto/tls · x509</code><span>Secure transport and certificates</span></div>
+          <div class="pkg"><code>crypto/subtle</code><span>Constant-time helper operations</span></div>
+        </div>
+      </div>
+      <footer class="slide-footer"><span>Go packages</span><span>07</span></footer>
+    </section>
+
+    <section class="slide" data-title="Secure random token in Go">
+      <div class="kicker">Example · Randomness</div>
+      <div class="split">
+        <div class="stack">
+          <h2>Security starts with unpredictable randomness.</h2>
+          <p class="lead">Use <code class="accent">crypto/rand</code> for keys, nonces, reset links, and session tokens. <span class="red">Never use math/rand for secrets.</span></p>
+        </div>
+        <pre aria-label="Go code for generating a secure random token"><code><span class="kw">package</span> main
+
+<span class="kw">import</span> (
+    <span class="str">"crypto/rand"</span>
+    <span class="str">"encoding/hex"</span>
+)
+
+<span class="kw">func</span> <span class="fn">newToken</span>() (<span class="kw">string</span>, <span class="kw">error</span>) {
+    b := <span class="fn">make</span>([]<span class="kw">byte</span>, 32)
+    <span class="kw">if</span> _, err := rand.<span class="fn">Read</span>(b); err != <span class="kw">nil</span> {
+        <span class="kw">return</span> <span class="str">""</span>, err
+    }
+    <span class="kw">return</span> hex.<span class="fn">EncodeToString</span>(b), <span class="kw">nil</span>
+}</code></pre>
+      </div>
+      <footer class="slide-footer"><span>crypto/rand</span><span>08</span></footer>
+    </section>
+
+    <section class="slide" data-title="Authenticated encryption in Go">
+      <div class="kicker">Example · Confidentiality + integrity</div>
+      <div class="split">
+        <div class="stack">
+          <h2>Prefer AEAD: encrypt and authenticate together.</h2>
+          <p class="lead">AES-GCM returns ciphertext with an authentication tag. The nonce must be unique for every message encrypted under the same key.</p>
+        </div>
+        <pre aria-label="Go code for AES-GCM encryption"><code>block, err := aes.<span class="fn">NewCipher</span>(key)
+<span class="kw">if</span> err != <span class="kw">nil</span> { <span class="kw">return</span> err }
+
+aead, err := cipher.<span class="fn">NewGCM</span>(block)
+<span class="kw">if</span> err != <span class="kw">nil</span> { <span class="kw">return</span> err }
+
+nonce := <span class="fn">make</span>([]<span class="kw">byte</span>, aead.<span class="fn">NonceSize</span>())
+<span class="kw">if</span> _, err := rand.<span class="fn">Read</span>(nonce); err != <span class="kw">nil</span> {
+    <span class="kw">return</span> err
+}
+
+sealed := aead.<span class="fn">Seal</span>(<span class="kw">nil</span>, nonce, plaintext, aad)
+<span class="cm">// Store or send: nonce || sealed</span></code></pre>
+      </div>
+      <footer class="slide-footer"><span>crypto/aes + crypto/cipher</span><span>09</span></footer>
+    </section>
+
+    <section class="slide" data-title="Symmetric encryption">
+      <div class="kicker">Deep dive · Symmetric encryption</div>
+      <div class="hero">
+        <h2 class="statement">One secret key protects data in <span class="accent">both directions.</span></h2>
+        <p class="lead">Symmetric encryption is fast enough for real application data—but the key, nonce, mode, and message format must work together safely.</p>
+      </div>
+      <footer class="slide-footer"><span>Symmetric encryption</span><span>10</span></footer>
+    </section>
+
+    <section class="slide" data-title="How symmetric encryption works">
+      <div class="kicker">Shared-key model</div>
+      <div class="stack">
+        <h2>The same secret unlocks what it locks.</h2>
+        <div class="cipher-cycle" role="img" aria-label="Plaintext and a shared secret key are encrypted into ciphertext, which the same key decrypts back into plaintext">
+          <div class="cipher-node"><strong>Plaintext</strong><span>Readable application data</span></div>
+          <div class="arrow">→</div>
+          <div class="cipher-node core"><strong>Encrypt</strong><span>AES-GCM</span></div>
+          <div class="arrow">→</div>
+          <div class="cipher-node"><strong>Ciphertext</strong><span>Unreadable without the key</span></div>
+          <div class="key-line">🔑 shared secret key</div>
+        </div>
+        <div class="cipher-cycle" role="img" aria-label="Ciphertext is decrypted with the shared secret key back into plaintext">
+          <div class="cipher-node"><strong>Ciphertext</strong><span>Nonce + sealed bytes</span></div>
+          <div class="arrow">→</div>
+          <div class="cipher-node core"><strong>Decrypt</strong><span>Verify, then release</span></div>
+          <div class="arrow">→</div>
+          <div class="cipher-node"><strong>Plaintext</strong><span>Returned only if authentic</span></div>
+          <div class="key-line">🔑 same secret key</div>
+        </div>
+      </div>
+      <footer class="slide-footer"><span>Shared-key model</span><span>11</span></footer>
+    </section>
+
+    <section class="slide" data-title="What symmetric encryption is used for">
+      <div class="kicker">Three common uses</div>
+      <div class="stack">
+        <h2>Use it when one trusted boundary can manage the key.</h2>
+        <div class="triad">
+          <article class="principle">
+            <h3>Application data</h3>
+            <p>Protect sensitive database fields, tokens, or payloads before storage.</p>
+            <span class="num">01</span>
+          </article>
+          <article class="principle">
+            <h3>Files and backups</h3>
+            <p>Encrypt exported reports, configuration bundles, and small backup artifacts.</p>
+            <span class="num">02</span>
+          </article>
+          <article class="principle">
+            <h3>Transport sessions</h3>
+            <p>TLS negotiates temporary symmetric keys, then uses them for fast traffic protection.</p>
+            <span class="num">03</span>
+          </article>
+        </div>
+        <p class="small">The hard part is key distribution: every system that decrypts must securely obtain and protect the secret.</p>
+      </div>
+      <footer class="slide-footer"><span>Use cases</span><span>12</span></footer>
+    </section>
+
+    <section class="slide" data-title="AES needs a secure mode">
+      <div class="kicker">Primitive vs construction</div>
+      <div class="decision">
+        <div class="stack">
+          <h2>AES encrypts one 16-byte block.</h2>
+          <p class="lead">A mode turns that primitive into a system for messages of practical length.</p>
+          <div class="formula"><span class="cyan">AES</span> + <span class="accent">mode</span> + nonce + key<br>→ message encryption</div>
+        </div>
+        <div class="mode-list">
+          <div class="mode-row"><strong class="accent">GCM</strong><span>Authenticated encryption. The practical default with AES.</span></div>
+          <div class="mode-row"><strong>CTR</strong><span>Encrypts only; requires a separate, correctly composed MAC.</span></div>
+          <div class="mode-row"><strong>CBC</strong><span>Legacy mode with padding and authentication pitfalls.</span></div>
+          <div class="mode-row"><strong class="red">ECB</strong><span>Leaks data patterns. Do not use it for messages.</span></div>
+        </div>
+      </div>
+      <footer class="slide-footer"><span>AES and modes</span><span>13</span></footer>
+    </section>
+
+    <section class="slide" data-title="AEAD encrypts and authenticates">
+      <div class="kicker">Authenticated encryption</div>
+      <div class="stack">
+        <h2>AES-GCM produces ciphertext that detects tampering.</h2>
+        <div class="aead-packet" role="img" aria-label="An AES-GCM encrypted message contains a nonce, ciphertext, and authentication tag">
+          <div class="packet-part"><strong>Nonce</strong><span>Unique per key<br>Not secret</span></div>
+          <div class="packet-part"><strong>Ciphertext</strong><span>Encrypted plaintext<br>Same length as input</span></div>
+          <div class="packet-part"><strong>Tag</strong><span>Integrity proof<br>Verified by Open</span></div>
+        </div>
+        <div class="compare">
+          <article><h3 class="cyan">Encrypted plaintext</h3><p class="lead">Confidential and authenticated. It is returned only after the tag verifies.</p></article>
+          <article><h3 class="amber">Associated data · AAD</h3><p class="lead">Authenticated but visible—useful for record IDs, versions, or routing context.</p></article>
+        </div>
+      </div>
+      <footer class="slide-footer"><span>AEAD message</span><span>14</span></footer>
+    </section>
+
+    <section class="slide" data-title="A nonce must never repeat">
+      <div class="kicker">The critical AES-GCM rule</div>
+      <div class="stack">
+        <h2>Unique key + nonce pairs are non-negotiable.</h2>
+        <div class="nonce-sequence" role="img" aria-label="Three unique nonces are safe and a repeated nonce under the same key is dangerous">
+          <div class="nonce">key A<br>nonce 001 ✓</div>
+          <div class="nonce">key A<br>nonce 002 ✓</div>
+          <div class="nonce">key A<br>nonce 003 ✓</div>
+          <div class="nonce reused">key A<br>nonce 002 ✕</div>
+        </div>
+        <div class="warning"><div class="mark">!</div><div><h3>Nonce reuse can reveal plaintext relationships and enable forgery.</h3><p>A nonce is not a password and does not need secrecy. Store or transmit it beside the ciphertext.</p></div></div>
+        <div class="property-row">
+          <article><h3>Random</h3><p>Generate the standard 12-byte GCM nonce with <code>crypto/rand</code>.</p></article>
+          <article><h3>Counter</h3><p>Use only with durable state and a design that prevents reuse.</p></article>
+          <article><h3>Rotation</h3><p>A fresh key creates a fresh nonce namespace.</p></article>
+        </div>
+      </div>
+      <footer class="slide-footer"><span>Nonce safety</span><span>15</span></footer>
+    </section>
+
+    <section class="slide" data-title="Build a reusable AES-GCM encrypt helper">
+      <div class="kicker">Go · Encrypt</div>
+      <div class="split">
+        <div class="stack">
+          <h2>Prefix the random nonce to the sealed output.</h2>
+          <div class="aead-packet">
+            <div class="packet-part"><strong>nonce</strong><span>12 bytes</span></div>
+            <div class="packet-part"><strong>ciphertext</strong><span>encrypted data</span></div>
+            <div class="packet-part"><strong>tag</strong><span>16 bytes</span></div>
+          </div>
+          <p class="small">AES keys must be 16, 24, or 32 bytes. Prefer a random 32-byte key for AES-256.</p>
+        </div>
+        <pre aria-label="Go function that encrypts data with AES-GCM"><code><span class="kw">func</span> <span class="fn">encrypt</span>(plain, key, aad []<span class="kw">byte</span>) ([]<span class="kw">byte</span>, <span class="kw">error</span>) {
+    block, err := aes.<span class="fn">NewCipher</span>(key)
+    <span class="kw">if</span> err != <span class="kw">nil</span> { <span class="kw">return nil</span>, err }
+    aead, err := cipher.<span class="fn">NewGCM</span>(block)
+    <span class="kw">if</span> err != <span class="kw">nil</span> { <span class="kw">return nil</span>, err }
+
+    nonce := <span class="fn">make</span>([]<span class="kw">byte</span>, aead.<span class="fn">NonceSize</span>())
+    <span class="kw">if</span> _, err := rand.<span class="fn">Read</span>(nonce); err != <span class="kw">nil</span> {
+        <span class="kw">return nil</span>, err
+    }
+    <span class="kw">return</span> aead.<span class="fn">Seal</span>(nonce, nonce, plain, aad), <span class="kw">nil</span>
+}</code></pre>
+      </div>
+      <footer class="slide-footer"><span>Seal</span><span>16</span></footer>
+    </section>
+
+    <section class="slide" data-title="Decrypt only after authentication succeeds">
+      <div class="kicker">Go · Decrypt</div>
+      <div class="split">
+        <div class="stack">
+          <h2><code class="accent">Open</code> verifies before returning plaintext.</h2>
+          <p class="lead">A wrong key, nonce, associated data value, ciphertext byte, or tag produces an error.</p>
+          <div class="warning"><div class="mark">!</div><div><h3>Treat failure as untrusted input.</h3><p>Do not return partial plaintext, reveal which check failed, or retry with weaker settings.</p></div></div>
+        </div>
+        <pre aria-label="Go function that decrypts and authenticates AES-GCM data"><code><span class="kw">func</span> <span class="fn">decrypt</span>(blob, key, aad []<span class="kw">byte</span>) ([]<span class="kw">byte</span>, <span class="kw">error</span>) {
+    block, err := aes.<span class="fn">NewCipher</span>(key)
+    <span class="kw">if</span> err != <span class="kw">nil</span> { <span class="kw">return nil</span>, err }
+    aead, err := cipher.<span class="fn">NewGCM</span>(block)
+    <span class="kw">if</span> err != <span class="kw">nil</span> { <span class="kw">return nil</span>, err }
+
+    n := aead.<span class="fn">NonceSize</span>()
+    <span class="kw">if</span> <span class="fn">len</span>(blob) &lt; n+aead.<span class="fn">Overhead</span>() {
+        <span class="kw">return nil</span>, errors.<span class="fn">New</span>(<span class="str">"invalid ciphertext"</span>)
+    }
+    nonce, sealed := blob[:n], blob[n:]
+    <span class="kw">return</span> aead.<span class="fn">Open</span>(<span class="kw">nil</span>, nonce, sealed, aad)
+}</code></pre>
+      </div>
+      <footer class="slide-footer"><span>Open</span><span>17</span></footer>
+    </section>
+
+    <section class="slide" data-title="Encrypt an application field">
+      <div class="kicker">Use case 01 · Data at rest</div>
+      <div class="split">
+        <div class="stack">
+          <h2>Bind ciphertext to the record where it belongs.</h2>
+          <div class="hash-machine" role="img" aria-label="A tax ID is encrypted while customer ID, field name, and version are authenticated as associated data">
+            <div class="machine-box"><strong>Plaintext</strong><code>tax ID</code></div>
+            <div class="arrow">+</div>
+            <div class="machine-box function"><strong>AAD</strong><code>record · field · version</code></div>
+            <div class="arrow">→</div>
+            <div class="machine-box"><strong>Stored blob</strong><code class="digest">nonce || sealed</code></div>
+          </div>
+          <p class="small">AAD is not encrypted. It prevents an attacker from moving valid ciphertext into a different record or field unnoticed.</p>
+        </div>
+        <pre aria-label="Go code that encrypts a database field with associated data"><code>aad := []<span class="kw">byte</span>(<span class="str">"customer:42|tax_id|v1"</span>)
+
+sealed, err := <span class="fn">encrypt</span>(
+    []<span class="kw">byte</span>(taxID),
+    customerDataKey,
+    aad,
+)
+<span class="kw">if</span> err != <span class="kw">nil</span> { <span class="kw">return</span> err }
+
+<span class="cm">// Store sealed plus a non-secret key ID.</span>
+record.TaxIDCiphertext = sealed
+record.KeyID = <span class="str">"customer-data-2026-08"</span></code></pre>
+      </div>
+      <footer class="slide-footer"><span>Field encryption</span><span>18</span></footer>
+    </section>
+
+    <section class="slide" data-title="Encrypt a small backup file">
+      <div class="kicker">Use case 02 · Files and backups</div>
+      <div class="split">
+        <div class="stack">
+          <h2>Encrypt the content and authenticate its format version.</h2>
+          <div class="flow" role="img" aria-label="A backup file is read, encrypted with AES-GCM, and written as an encrypted file">
+            <div class="flow-node"><strong>backup.json</strong><span>Plain file</span></div>
+            <div class="arrow">→</div>
+            <div class="flow-node"><strong class="accent">AES-GCM</strong><span>AAD: backup:v1</span></div>
+            <div class="arrow">→</div>
+            <div class="flow-node"><strong>backup.enc</strong><span>Nonce + sealed data</span></div>
+          </div>
+          <p class="small">This one-shot pattern is for bounded files. Large files need an established chunked format with a unique nonce per chunk.</p>
+        </div>
+        <pre aria-label="Go code that encrypts a small backup file"><code>plain, err := os.<span class="fn">ReadFile</span>(<span class="str">"backup.json"</span>)
+<span class="kw">if</span> err != <span class="kw">nil</span> { <span class="kw">return</span> err }
+
+sealed, err := <span class="fn">encrypt</span>(
+    plain,
+    backupKey,
+    []<span class="kw">byte</span>(<span class="str">"backup:v1"</span>),
+)
+<span class="kw">if</span> err != <span class="kw">nil</span> { <span class="kw">return</span> err }
+
+<span class="kw">return</span> os.<span class="fn">WriteFile</span>(
+    <span class="str">"backup.enc"</span>, sealed, 0600,
+)</code></pre>
+      </div>
+      <footer class="slide-footer"><span>File encryption</span><span>19</span></footer>
+    </section>
+
+    <section class="slide" data-title="Let TLS protect network traffic">
+      <div class="kicker">Use case 03 · Transport</div>
+      <div class="split">
+        <div class="stack">
+          <h2>Use HTTPS instead of encrypting request bodies yourself.</h2>
+          <div class="flow" role="img" aria-label="TLS authenticates the server, establishes session keys, then protects application traffic with symmetric encryption">
+            <div class="flow-node"><strong>Authenticate</strong><span>Certificate</span></div>
+            <div class="arrow">→</div>
+            <div class="flow-node"><strong>Agree keys</strong><span>Handshake</span></div>
+            <div class="arrow">→</div>
+            <div class="flow-node"><strong class="accent">Encrypt traffic</strong><span>Symmetric session keys</span></div>
+          </div>
+          <p class="small">TLS handles peer identity, negotiation, key agreement, encryption, integrity, and key updates as one protocol.</p>
+        </div>
+        <pre aria-label="Go code that makes an HTTPS request using TLS"><code>client := &amp;http.Client{
+    Timeout: 10 * time.Second,
+}
+
+req, err := http.<span class="fn">NewRequestWithContext</span>(
+    ctx, http.MethodGet,
+    <span class="str">"https://api.example.com/data"</span>, <span class="kw">nil</span>,
+)
+<span class="kw">if</span> err != <span class="kw">nil</span> { <span class="kw">return</span> err }
+
+resp, err := client.<span class="fn">Do</span>(req)
+<span class="cm">// Go verifies the server certificate by default.</span>
+<span class="cm">// Never set InsecureSkipVerify for production.</span></code></pre>
+      </div>
+      <footer class="slide-footer"><span>crypto/tls</span><span>20</span></footer>
+    </section>
+
+    <section class="slide" data-title="Manage symmetric keys as a lifecycle">
+      <div class="kicker">Keys are the security boundary</div>
+      <div class="decision">
+        <div class="stack">
+          <h2>The cipher is strong only while the key stays controlled.</h2>
+          <pre aria-label="Go code that generates a random AES-256 key"><code>key := <span class="fn">make</span>([]<span class="kw">byte</span>, 32)
+<span class="kw">if</span> _, err := rand.<span class="fn">Read</span>(key); err != <span class="kw">nil</span> {
+    <span class="kw">return</span> err
+}
+
+<span class="cm">// Wrap or import into a KMS.</span>
+<span class="cm">// Do not print or commit this key.</span></code></pre>
+        </div>
+        <ol class="checklist">
+          <li>Generate from <code>crypto/rand</code> or a KMS.</li>
+          <li>Store outside source code and ordinary config.</li>
+          <li>Separate keys by purpose and environment.</li>
+          <li>Record a non-secret key version with ciphertext.</li>
+          <li>Rotate without losing access to old data.</li>
+          <li>Restrict and audit every decrypt operation.</li>
+        </ol>
+      </div>
+      <footer class="slide-footer"><span>Key lifecycle</span><span>21</span></footer>
+    </section>
+
+    <section class="slide" data-title="Asymmetric cryptography">
+      <div class="kicker">Deep dive · Public-key cryptography</div>
+      <div class="hero">
+        <h2 class="statement">Two related keys separate <span class="accent">public operations</span> from private ones.</h2>
+        <p class="lead">The same key-pair idea supports encryption, digital signatures, and key agreement—but each job uses a different construction.</p>
+      </div>
+      <footer class="slide-footer"><span>Asymmetric cryptography</span><span>22</span></footer>
+    </section>
+
+    <section class="slide" data-title="Public and private keys have different jobs">
+      <div class="kicker">The key-pair model</div>
+      <div class="stack">
+        <h2>Share one key. Protect the other.</h2>
+        <div class="keypair-grid">
+          <article class="key-card">
+            <h3 class="cyan">Public key</h3>
+            <p>Distribute it widely. Other people use it to encrypt to you or verify your signature.</p>
+            <code>safe to publish</code>
+            <span class="key-icon">⌁</span>
+          </article>
+          <article class="key-card private">
+            <h3 class="amber">Private key</h3>
+            <p>Keep it secret. You use it to decrypt, sign, or derive a shared secret.</p>
+            <code>protect like a production credential</code>
+            <span class="key-icon">⚿</span>
+          </article>
+        </div>
+        <p class="small">The keys are mathematically related, but deriving the private key from the public key should be computationally infeasible.</p>
+      </div>
+      <footer class="slide-footer"><span>Key pair</span><span>23</span></footer>
+    </section>
+
+    <section class="slide" data-title="Three jobs for asymmetric cryptography">
+      <div class="kicker">Do not mix the operations</div>
+      <div class="stack">
+        <h2>“Public-key crypto” is a family of different guarantees.</h2>
+        <div class="triad">
+          <article class="principle">
+            <h3>Encrypt a small secret</h3>
+            <p>Public key encrypts; private key decrypts. Example: RSA-OAEP wrapping a data key.</p>
+            <span class="num">01</span>
+          </article>
+          <article class="principle">
+            <h3>Sign a message</h3>
+            <p>Private key signs; public key verifies. Example: Ed25519 software-release signatures.</p>
+            <span class="num">02</span>
+          </article>
+          <article class="principle">
+            <h3>Agree on a key</h3>
+            <p>Two key pairs derive the same secret. Example: X25519 followed by HKDF.</p>
+            <span class="num">03</span>
+          </article>
+        </div>
+      </div>
+      <footer class="slide-footer"><span>Public-key uses</span><span>24</span></footer>
+    </section>
+
+    <section class="slide" data-title="Encrypt to a recipient with RSA-OAEP">
+      <div class="kicker">Use case 01 · Public-key encryption</div>
+      <div class="stack">
+        <h2>The sender needs only the recipient’s public key.</h2>
+        <div class="asym-flow" role="img" aria-label="A sender encrypts a small secret with the recipient's public key and the recipient decrypts it with the private key">
+          <div class="asym-node"><strong>Small secret</strong><span>Session key or short token</span></div>
+          <div class="arrow">→</div>
+          <div class="asym-node core"><strong>RSA-OAEP</strong><span>Recipient public key</span></div>
+          <div class="arrow">→</div>
+          <div class="asym-node private"><strong>Recipient decrypts</strong><span>Private key required</span></div>
+        </div>
+        <div class="warning"><div class="mark">!</div><div><h3>RSA is not bulk-data encryption.</h3><p>RSA-OAEP has a strict message-size limit and is much slower than AES. Encrypt a random symmetric data key, then use that key with AEAD.</p></div></div>
+        <p class="small">Use OAEP for new RSA encryption designs. PKCS #1 v1.5 encryption is deprecated and dangerous.</p>
+      </div>
+      <footer class="slide-footer"><span>RSA-OAEP</span><span>25</span></footer>
+    </section>
+
+    <section class="slide" data-title="Generate an RSA key and encrypt a secret">
+      <div class="kicker">Go · RSA-OAEP encrypt</div>
+      <div class="split">
+        <div class="stack">
+          <h2>Encrypt with the public key and a purpose label.</h2>
+          <div class="property-row">
+            <article><h3>Randomized</h3><p>The same secret encrypts differently each time.</p></article>
+            <article><h3>Context-bound</h3><p>The OAEP label must match during decryption.</p></article>
+            <article><h3>Size-limited</h3><p>Use it for keys—not files or JSON payloads.</p></article>
+          </div>
+        </div>
+        <pre aria-label="Go code that generates an RSA key and encrypts with OAEP"><code>privateKey, err := rsa.<span class="fn">GenerateKey</span>(
+    rand.Reader, 3072,
+)
+<span class="kw">if</span> err != <span class="kw">nil</span> { <span class="kw">return</span> err }
+
+publicKey := &amp;privateKey.PublicKey
+label := []<span class="kw">byte</span>(<span class="str">"data-key:v1"</span>)
+
+ciphertext, err := rsa.<span class="fn">EncryptOAEP</span>(
+    sha256.<span class="fn">New</span>(), rand.Reader,
+    publicKey, dataKey, label,
+)</code></pre>
+      </div>
+      <footer class="slide-footer"><span>crypto/rsa · EncryptOAEP</span><span>26</span></footer>
+    </section>
+
+    <section class="slide" data-title="Decrypt RSA-OAEP with the private key">
+      <div class="kicker">Go · RSA-OAEP decrypt</div>
+      <div class="split">
+        <div class="stack">
+          <h2>Wrong key, label, or ciphertext produces an error.</h2>
+          <p class="lead">Treat decryption errors uniformly. Detailed failure differences can become an oracle for attackers.</p>
+          <div class="warning"><div class="mark">!</div><div><h3>Encryption alone does not identify the sender.</h3><p>Anyone with the public key can create ciphertext. Use an authenticated protocol or a signature when sender authenticity matters.</p></div></div>
+        </div>
+        <pre aria-label="Go code that decrypts RSA-OAEP ciphertext"><code>label := []<span class="kw">byte</span>(<span class="str">"data-key:v1"</span>)
+
+dataKey, err := rsa.<span class="fn">DecryptOAEP</span>(
+    sha256.<span class="fn">New</span>(), <span class="kw">nil</span>,
+    privateKey, ciphertext, label,
+)
+<span class="kw">if</span> err != <span class="kw">nil</span> {
+    <span class="kw">return</span> errors.<span class="fn">New</span>(<span class="str">"decrypt failed"</span>)
+}
+
+<span class="cm">// dataKey can now open the AES-GCM payload.</span></code></pre>
+      </div>
+      <footer class="slide-footer"><span>crypto/rsa · DecryptOAEP</span><span>27</span></footer>
+    </section>
+
+    <section class="slide" data-title="Real systems use hybrid encryption">
+      <div class="kicker">Public-key speed + symmetric speed</div>
+      <div class="stack">
+        <h2>Wrap the key; seal the data.</h2>
+        <div class="envelope" role="img" aria-label="A hybrid encryption envelope contains a key identifier, an RSA-wrapped data key, and AES-GCM-sealed data">
+          <div class="envelope-part"><strong>Key ID</strong><span>Selects recipient private key<br>Not secret</span></div>
+          <div class="envelope-part"><strong>Wrapped data key</strong><span>RSA-OAEP(public key, random AES key)</span></div>
+          <div class="envelope-part"><strong>Sealed payload</strong><span>AES-GCM(data key, plaintext)</span></div>
+        </div>
+        <pre aria-label="Go pseudocode for a hybrid encryption envelope"><code>dataKey := <span class="fn">randomBytes</span>(32)
+sealedData, err := <span class="fn">encrypt</span>(plaintext, dataKey, aad) <span class="cm">// AES-GCM</span>
+wrappedKey, err := rsa.<span class="fn">EncryptOAEP</span>(sha256.New(), rand.Reader, recipient, dataKey, label)
+
+envelope := Envelope{
+    KeyID: <span class="str">"recipient-key-2026"</span>, WrappedKey: wrappedKey, SealedData: sealedData,
+}</code></pre>
+        <p class="small">Use an established envelope-encryption or HPKE implementation when available; the message format and key lifecycle matter as much as the primitives.</p>
+      </div>
+      <footer class="slide-footer"><span>Hybrid encryption</span><span>28</span></footer>
+    </section>
+
+    <section class="slide" data-title="Digital signatures reverse the trust direction">
+      <div class="kicker">Use case 02 · Digital signatures</div>
+      <div class="stack">
+        <h2>The private key signs. Anyone with the public key verifies.</h2>
+        <div class="asym-flow" role="img" aria-label="A publisher signs a message with a private key and recipients verify the message and signature with the public key">
+          <div class="asym-node private"><strong>Publisher signs</strong><span>Message + private key</span></div>
+          <div class="arrow">→</div>
+          <div class="asym-node core"><strong>Message + signature</strong><span>Both are visible</span></div>
+          <div class="arrow">→</div>
+          <div class="asym-node"><strong>Anyone verifies</strong><span>Trusted public key</span></div>
+        </div>
+        <div class="compare">
+          <article><h3 class="accent">Valid signature</h3><p class="lead">The message matches and was signed by the corresponding private key.</p></article>
+          <article><h3 class="red">Not confidentiality</h3><p class="lead">Signing does not hide the message. Encrypt separately when secrecy is required.</p></article>
+        </div>
+      </div>
+      <footer class="slide-footer"><span>Signature model</span><span>29</span></footer>
+    </section>
+
+    <section class="slide" data-title="Sign and verify with Ed25519">
+      <div class="kicker">Go · Digital signatures</div>
+      <div class="split">
+        <div class="stack">
+          <h2>Ed25519 provides a compact, high-level signing API.</h2>
+          <ul class="clean-list">
+            <li>Sign release manifests and artifacts</li>
+            <li>Authenticate configuration or webhook payloads</li>
+            <li>Verify licenses or offline assertions</li>
+          </ul>
+          <p class="small">Verification is meaningful only if the public key came from a trusted source.</p>
+        </div>
+        <pre aria-label="Go code that signs and verifies a message with Ed25519"><code>publicKey, privateKey, err := ed25519.<span class="fn">GenerateKey</span>(
+    rand.Reader,
+)
+<span class="kw">if</span> err != <span class="kw">nil</span> { <span class="kw">return</span> err }
+
+message := []<span class="kw">byte</span>(<span class="str">"release:v1.4.0|sha256:…"</span>)
+signature := ed25519.<span class="fn">Sign</span>(privateKey, message)
+
+valid := ed25519.<span class="fn">Verify</span>(
+    publicKey, message, signature,
+)
+<span class="kw">if</span> !valid { <span class="kw">return</span> errors.<span class="fn">New</span>(<span class="str">"bad signature"</span>) }</code></pre>
+      </div>
+      <footer class="slide-footer"><span>crypto/ed25519</span><span>30</span></footer>
+    </section>
+
+    <section class="slide" data-title="ECDH derives the same shared secret">
+      <div class="kicker">Use case 03 · Key agreement</div>
+      <div class="stack">
+        <h2>Exchange public keys; keep private keys local.</h2>
+        <div class="message-lane" role="img" aria-label="Alice and Bob exchange public keys and independently derive the same shared secret using their own private keys">
+          <div class="lane-node"><strong>Alice</strong><span>Alice private + Bob public</span></div>
+          <div class="arrow">→</div>
+          <div class="lane-node"><strong>Public exchange</strong><span>Alice public ↔ Bob public</span></div>
+          <div class="arrow">→</div>
+          <div class="lane-node"><strong>Bob</strong><span>Bob private + Alice public</span></div>
+        </div>
+        <div class="formula">ECDH(Alice private, Bob public) = <span class="accent">shared secret</span><br>ECDH(Bob private, Alice public) = <span class="accent">same shared secret</span></div>
+        <div class="warning"><div class="mark">!</div><div><h3>Key agreement alone does not authenticate the peer.</h3><p>Without signatures, certificates, or a pre-shared trust anchor, an attacker can perform a machine-in-the-middle exchange.</p></div></div>
+      </div>
+      <footer class="slide-footer"><span>ECDH model</span><span>31</span></footer>
+    </section>
+
+    <section class="slide" data-title="Derive a session key with X25519 and HKDF">
+      <div class="kicker">Go · Key agreement</div>
+      <div class="split">
+        <div class="stack">
+          <h2>Feed the raw ECDH result into a KDF.</h2>
+          <div class="flow" role="img" aria-label="X25519 produces a shared secret and HKDF derives a contextual AES key">
+            <div class="flow-node"><strong>X25519</strong><span>Raw shared secret</span></div>
+            <div class="arrow">→</div>
+            <div class="flow-node"><strong class="accent">HKDF-SHA-256</strong><span>Salt + context</span></div>
+            <div class="arrow">→</div>
+            <div class="flow-node"><strong>AES key</strong><span>32 bytes</span></div>
+          </div>
+        </div>
+        <pre aria-label="Go code that performs X25519 and derives a key with HKDF"><code>curve := ecdh.<span class="fn">X25519</span>()
+alice, err := curve.<span class="fn">GenerateKey</span>(rand.Reader)
+<span class="kw">if</span> err != <span class="kw">nil</span> { <span class="kw">return</span> err }
+
+shared, err := alice.<span class="fn">ECDH</span>(bobPublicKey)
+<span class="kw">if</span> err != <span class="kw">nil</span> { <span class="kw">return</span> err }
+
+sessionKey, err := hkdf.<span class="fn">Key</span>(
+    sha256.New, shared, salt,
+    <span class="str">"chat-session:v1"</span>, 32,
+)</code></pre>
+      </div>
+      <footer class="slide-footer"><span>crypto/ecdh + crypto/hkdf</span><span>32</span></footer>
+    </section>
+
+    <section class="slide" data-title="A public key needs an identity">
+      <div class="kicker">The trust problem</div>
+      <div class="decision">
+        <div class="stack">
+          <h2>A key is useful only when you know whose key it is.</h2>
+          <p class="lead">Certificates, pinned keys, fingerprints, and trusted directories bind a public key to an expected identity.</p>
+        </div>
+        <div class="stack">
+          <div class="flow" role="img" aria-label="A trusted authority binds an identity to a public key in a certificate that a client verifies">
+            <div class="flow-node"><strong>Trusted issuer</strong><span>Signs binding</span></div>
+            <div class="arrow">→</div>
+            <div class="flow-node"><strong>Certificate</strong><span>Identity + public key</span></div>
+            <div class="arrow">→</div>
+            <div class="flow-node"><strong class="accent">Verifier</strong><span>Checks chain + name + time</span></div>
+          </div>
+          <div class="warning"><div class="mark">?</div><div><h3>An attacker can publish a perfectly valid key pair.</h3><p>The security question is not “does this key work?” but “is this the authentic key for the identity I intended?”</p></div></div>
+        </div>
+      </div>
+      <footer class="slide-footer"><span>Certificates and trust</span><span>33</span></footer>
+    </section>
+
+    <section class="slide" data-title="Asymmetric cryptography implementation rules">
+      <div class="kicker">Before shipping</div>
+      <div class="stack">
+        <h2>Use high-level constructions and protect private operations.</h2>
+        <ol class="checklist">
+          <li>Use RSA-OAEP, not PKCS #1 v1.5 encryption.</li>
+          <li>Encrypt bulk data with AEAD and wrap only its key.</li>
+          <li>Use Ed25519 or an established signature protocol.</li>
+          <li>Run ECDH output through HKDF before use.</li>
+          <li>Authenticate every public key you accept.</li>
+          <li>Keep private keys in a KMS, HSM, or restricted store.</li>
+          <li>Version keys and plan rotation or revocation.</li>
+          <li>Prefer TLS, HPKE, or another reviewed protocol.</li>
+        </ol>
+        <p class="small">Use PKCS #8 for portable private-key encoding and PKIX SubjectPublicKeyInfo for public keys; PEM is only the textual container.</p>
+      </div>
+      <footer class="slide-footer"><span>Public-key checklist</span><span>34</span></footer>
+    </section>
+
+    <section class="slide" data-title="TLS and certificates">
+      <div class="kicker">Deep dive · Secure transport</div>
+      <div class="hero">
+        <h2 class="statement">TLS turns public-key trust into <span class="accent">fast, authenticated traffic.</span></h2>
+        <p class="lead">Certificates identify peers. The handshake establishes session keys. Symmetric AEAD protects the application data that follows.</p>
+      </div>
+      <footer class="slide-footer"><span>TLS and X.509</span><span>35</span></footer>
+    </section>
+
+    <section class="slide" data-title="What TLS protects">
+      <div class="kicker">Security boundary</div>
+      <div class="stack">
+        <h2>TLS protects a connection—not the whole application.</h2>
+        <div class="compare">
+          <article>
+            <h3 class="accent">What TLS provides</h3>
+            <ul>
+              <li>Confidentiality for application bytes in transit</li>
+              <li>Integrity and tamper detection</li>
+              <li>Server identity through certificate validation</li>
+              <li>Optional client identity with mutual TLS</li>
+            </ul>
+          </article>
+          <article>
+            <h3 class="red">What TLS does not provide</h3>
+            <ul>
+              <li>Application authorization or safe business logic</li>
+              <li>Protection after either endpoint is compromised</li>
+              <li>Encryption for data after it is stored</li>
+              <li>Complete hiding of connection metadata</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+      <footer class="slide-footer"><span>TLS guarantees</span><span>36</span></footer>
+    </section>
+
+    <section class="slide" data-title="A TLS 1.3 handshake establishes trust and keys">
+      <div class="kicker">Handshake sequence · Simplified</div>
+      <div class="stack">
+        <h2>The expensive public-key work happens before application data flows.</h2>
+        <div class="handshake" role="img" aria-label="Simplified TLS 1.3 handshake between client and server">
+          <div class="handshake-party">Client</div><div></div><div class="handshake-party">Server</div>
+          <div class="handshake-step"><div class="event">ClientHello<br>versions · SNI · key share</div><div class="wire">────────→</div><div></div></div>
+          <div class="handshake-step"><div></div><div class="wire">←────────</div><div class="event server">ServerHello<br>chosen suite · key share</div></div>
+          <div class="handshake-step"><div></div><div class="wire">←────────</div><div class="event server">Certificate · CertificateVerify · Finished</div></div>
+          <div class="handshake-step"><div class="event">Validate chain + hostname<br>derive session keys · Finished</div><div class="wire">────────→</div><div></div></div>
+          <div class="handshake-step"><div class="event">Application data</div><div class="wire">←───────→</div><div class="event server">AEAD-protected records</div></div>
+        </div>
+        <p class="small">TLS 1.3 derives directional traffic keys from the handshake secret. The certificate signs the handshake context; it does not encrypt every packet.</p>
+      </div>
+      <footer class="slide-footer"><span>TLS 1.3 handshake</span><span>37</span></footer>
+    </section>
+
+    <section class="slide" data-title="A certificate binds identity to a public key">
+      <div class="kicker">X.509 certificate anatomy</div>
+      <div class="split">
+        <div class="stack">
+          <h2>A certificate is a signed identity document.</h2>
+          <p class="lead">The issuer signs the certificate fields. The subject proves possession of the matching private key during TLS.</p>
+        </div>
+        <dl class="cert-sheet">
+          <dt>Subject / SAN</dt><dd>Names and identities the certificate represents</dd>
+          <dt>Issuer</dt><dd>Certificate authority that signed it</dd>
+          <dt>Validity</dt><dd>NotBefore and NotAfter time window</dd>
+          <dt>Public key</dt><dd>RSA, ECDSA, Ed25519, or another supported type</dd>
+          <dt>Key usage</dt><dd>Allowed cryptographic operations</dd>
+          <dt>Extended usage</dt><dd>Server auth, client auth, code signing, and more</dd>
+          <dt>Signature</dt><dd>Issuer’s signature over the certificate body</dd>
+          <dt>Serial number</dt><dd>Issuer-scoped certificate identifier</dd>
+        </dl>
+      </div>
+      <footer class="slide-footer"><span>Certificate anatomy</span><span>38</span></footer>
+    </section>
+
+    <section class="slide" data-title="Certificate verification builds a chain of trust">
+      <div class="kicker">Leaf → intermediate → root</div>
+      <div class="stack">
+        <h2>The leaf is trusted because signatures lead to a trusted root.</h2>
+        <div class="cert-chain" role="img" aria-label="A server leaf certificate is signed by an intermediate certificate authority which is anchored by a trusted root">
+          <article class="cert-node"><h3>Leaf certificate</h3><p>Server name, public key, server-auth usage</p></article>
+          <article class="cert-node"><h3>Intermediate CA</h3><p>Signs leaves and limits delegated authority</p></article>
+          <article class="cert-node"><h3>Root CA</h3><p>Already trusted by the operating system or application</p></article>
+        </div>
+        <div class="property-row">
+          <article><h3>Identity</h3><p>SAN must match the DNS name or IP address.</p></article>
+          <article><h3>Policy</h3><p>Validity, key usage, constraints, and signatures must pass.</p></article>
+          <article><h3>Anchor</h3><p>The final chain must reach an accepted root.</p></article>
+        </div>
+        <p class="small">Servers normally send the leaf and needed intermediates. Clients already have root trust anchors and usually do not need the root sent.</p>
+      </div>
+      <footer class="slide-footer"><span>Chain validation</span><span>39</span></footer>
+    </section>
+
+    <section class="slide" data-title="Go verifies HTTPS by default">
+      <div class="kicker">Go · TLS client</div>
+      <div class="split">
+        <div class="stack">
+          <h2>Start with the safe default client behavior.</h2>
+          <ul class="clean-list">
+            <li>Uses platform root certificates</li>
+            <li>Checks the certificate chain and hostname</li>
+            <li>Negotiates secure protocol defaults</li>
+            <li>Rejects invalid peers before returning a response</li>
+          </ul>
+          <div class="warning"><div class="mark">!</div><div><h3>Never ship <code>InsecureSkipVerify: true</code>.</h3><p>It disables normal certificate and hostname verification unless you replace them correctly with custom verification.</p></div></div>
+        </div>
+        <pre aria-label="Go code using the default HTTPS certificate verification"><code>client := &amp;http.Client{
+    Timeout: 10 * time.Second,
+}
+
+req, err := http.<span class="fn">NewRequestWithContext</span>(
+    ctx, http.MethodGet,
+    <span class="str">"https://api.example.com/data"</span>, <span class="kw">nil</span>,
+)
+<span class="kw">if</span> err != <span class="kw">nil</span> { <span class="kw">return</span> err }
+
+resp, err := client.<span class="fn">Do</span>(req)
+<span class="kw">if</span> err != <span class="kw">nil</span> { <span class="kw">return</span> err }</code></pre>
+      </div>
+      <footer class="slide-footer"><span>HTTPS client</span><span>40</span></footer>
+    </section>
+
+    <section class="slide" data-title="Add private roots and a client certificate">
+      <div class="kicker">Go · Custom trust and mTLS</div>
+      <div class="split">
+        <div class="stack">
+          <h2>Extend trust deliberately for internal PKI.</h2>
+          <div class="flow" role="img" aria-label="A client trusts a private root and presents its own certificate to a mutual TLS server">
+            <div class="flow-node"><strong>Root pool</strong><span>Who the client trusts</span></div>
+            <div class="arrow">+</div>
+            <div class="flow-node"><strong>Client pair</strong><span>Who the client is</span></div>
+            <div class="arrow">→</div>
+            <div class="flow-node"><strong class="accent">mTLS</strong><span>Both peers authenticated</span></div>
+          </div>
+        </div>
+        <pre aria-label="Go code configuring private roots and a client certificate"><code>roots, err := x509.<span class="fn">SystemCertPool</span>()
+<span class="kw">if</span> err != <span class="kw">nil</span> { <span class="kw">return</span> err }
+caPEM, _ := os.<span class="fn">ReadFile</span>(<span class="str">"internal-ca.pem"</span>)
+<span class="kw">if</span> !roots.<span class="fn">AppendCertsFromPEM</span>(caPEM) {
+    <span class="kw">return</span> errors.<span class="fn">New</span>(<span class="str">"invalid CA PEM"</span>)
+}
+clientCert, err := tls.<span class="fn">LoadX509KeyPair</span>(
+    <span class="str">"client-chain.pem"</span>, <span class="str">"client-key.pem"</span>,
+)
+<span class="kw">if</span> err != <span class="kw">nil</span> { <span class="kw">return</span> err }
+cfg := &amp;tls.Config{
+    RootCAs: roots,
+    Certificates: []tls.Certificate{clientCert},
+}</code></pre>
+      </div>
+      <footer class="slide-footer"><span>Private CA and mTLS</span><span>41</span></footer>
+    </section>
+
+    <section class="slide" data-title="Load a TLS server certificate and key">
+      <div class="kicker">Go · TLS server</div>
+      <div class="split">
+        <div class="stack">
+          <h2>Serve the leaf certificate followed by intermediates.</h2>
+          <div class="aead-packet" role="img" aria-label="A server certificate file contains the leaf then intermediates while a separate file contains the matching private key">
+            <div class="packet-part"><strong>Leaf cert</strong><span>First PEM block</span></div>
+            <div class="packet-part"><strong>Intermediates</strong><span>Following PEM blocks</span></div>
+            <div class="packet-part"><strong>Private key</strong><span>Separate protected file</span></div>
+          </div>
+          <p class="small"><code>LoadX509KeyPair</code> parses the PEM files, loads the certificate chain, and checks that the private key matches the leaf public key.</p>
+        </div>
+        <pre aria-label="Go code loading a certificate chain and starting a TLS server"><code>pair, err := tls.<span class="fn">LoadX509KeyPair</span>(
+    <span class="str">"server-chain.pem"</span>, <span class="str">"server-key.pem"</span>,
+)
+<span class="kw">if</span> err != <span class="kw">nil</span> { <span class="kw">return</span> err }
+
+server := &amp;http.Server{
+    Addr: <span class="str">":8443"</span>, Handler: mux,
+    TLSConfig: &amp;tls.Config{
+        Certificates: []tls.Certificate{pair},
+    },
+}
+<span class="kw">return</span> server.<span class="fn">ListenAndServeTLS</span>(<span class="str">""</span>, <span class="str">""</span>)</code></pre>
+      </div>
+      <footer class="slide-footer"><span>LoadX509KeyPair</span><span>42</span></footer>
+    </section>
+
+    <section class="slide" data-title="Decode PEM, then parse certificate DER">
+      <div class="kicker">Go · Parse a certificate</div>
+      <div class="split">
+        <div class="stack">
+          <h2>PEM is a text envelope around DER bytes.</h2>
+          <div class="asym-flow" role="img" aria-label="A PEM certificate is base64 decoded into DER bytes and then parsed into an x509 Certificate">
+            <div class="asym-node"><strong>PEM text</strong><span>BEGIN CERTIFICATE</span></div>
+            <div class="arrow">→</div>
+            <div class="asym-node core"><strong>pem.Decode</strong><span>Extract block.Bytes</span></div>
+            <div class="arrow">→</div>
+            <div class="asym-node"><strong>x509.Certificate</strong><span>Parsed fields + public key</span></div>
+          </div>
+        </div>
+        <pre aria-label="Go code decoding PEM and parsing an X.509 certificate"><code>data, err := os.<span class="fn">ReadFile</span>(<span class="str">"server.pem"</span>)
+<span class="kw">if</span> err != <span class="kw">nil</span> { <span class="kw">return</span> err }
+
+block, rest := pem.<span class="fn">Decode</span>(data)
+<span class="kw">if</span> block == <span class="kw">nil</span> || block.Type != <span class="str">"CERTIFICATE"</span> {
+    <span class="kw">return</span> errors.<span class="fn">New</span>(<span class="str">"missing certificate"</span>)
+}
+cert, err := x509.<span class="fn">ParseCertificate</span>(block.Bytes)
+<span class="kw">if</span> err != <span class="kw">nil</span> { <span class="kw">return</span> err }
+
+fmt.<span class="fn">Println</span>(cert.Subject, cert.DNSNames)
+_ = rest <span class="cm">// decode again for the next PEM block</span></code></pre>
+      </div>
+      <footer class="slide-footer"><span>pem.Decode + ParseCertificate</span><span>43</span></footer>
+    </section>
+
+    <section class="slide" data-title="Know the key container before parsing">
+      <div class="kicker">Format map · DER structures inside PEM</div>
+      <div class="stack">
+        <h2>The PEM label usually tells you which parser to call.</h2>
+        <div class="format-map">
+          <div class="format-row"><code>CERTIFICATE</code><span><code>x509.ParseCertificate</code> · X.509 leaf or CA</span></div>
+          <div class="format-row"><code>PUBLIC KEY</code><span><code>x509.ParsePKIXPublicKey</code> · generic SubjectPublicKeyInfo</span></div>
+          <div class="format-row"><code>RSA PUBLIC KEY</code><span><code>x509.ParsePKCS1PublicKey</code> · RSA-specific</span></div>
+          <div class="format-row"><code>PRIVATE KEY</code><span><code>x509.ParsePKCS8PrivateKey</code> · generic private key</span></div>
+          <div class="format-row"><code>RSA PRIVATE KEY</code><span><code>x509.ParsePKCS1PrivateKey</code> · RSA-specific</span></div>
+          <div class="format-row"><code>EC PRIVATE KEY</code><span><code>x509.ParseECPrivateKey</code> · SEC 1 EC key</span></div>
+          <div class="format-row"><code>CERTIFICATE REQUEST</code><span><code>x509.ParseCertificateRequest</code> · PKCS #10 CSR</span></div>
+          <div class="format-row"><code>raw DER</code><span>Skip <code>pem.Decode</code>; pass bytes directly to the matching parser</span></div>
+        </div>
+        <p class="small">Prefer PKIX for portable public keys and PKCS #8 for portable private keys. PKCS #1 and SEC 1 are algorithm-specific legacy formats.</p>
+      </div>
+      <footer class="slide-footer"><span>Key format map</span><span>44</span></footer>
+    </section>
+
+    <section class="slide" data-title="Parse public keys from standard formats">
+      <div class="kicker">Go · Public keys</div>
+      <div class="split">
+        <div class="stack">
+          <h2>Generic PKIX keys return a concrete key type.</h2>
+          <ul class="clean-list">
+            <li><code>PUBLIC KEY</code> may contain RSA, ECDSA, Ed25519, or ECDH</li>
+            <li><code>RSA PUBLIC KEY</code> contains PKCS #1 RSA only</li>
+            <li>A certificate’s <code>PublicKey</code> is already parsed</li>
+          </ul>
+        </div>
+        <pre aria-label="Go code parsing PKIX and PKCS1 public keys"><code>block, _ := pem.<span class="fn">Decode</span>(publicPEM)
+<span class="kw">if</span> block == <span class="kw">nil</span> { <span class="kw">return nil</span>, errNoPEM }
+
+<span class="kw">switch</span> block.Type {
+<span class="kw">case</span> <span class="str">"PUBLIC KEY"</span>:
+    <span class="kw">return</span> x509.<span class="fn">ParsePKIXPublicKey</span>(block.Bytes)
+<span class="kw">case</span> <span class="str">"RSA PUBLIC KEY"</span>:
+    <span class="kw">return</span> x509.<span class="fn">ParsePKCS1PublicKey</span>(block.Bytes)
+<span class="kw">case</span> <span class="str">"CERTIFICATE"</span>:
+    cert, err := x509.<span class="fn">ParseCertificate</span>(block.Bytes)
+    <span class="kw">if</span> err != <span class="kw">nil</span> { <span class="kw">return nil</span>, err }
+    <span class="kw">return</span> cert.PublicKey, <span class="kw">nil</span>
+<span class="kw">default</span>:
+    <span class="kw">return nil</span>, fmt.<span class="fn">Errorf</span>(<span class="str">"unexpected %q"</span>, block.Type)
+}</code></pre>
+      </div>
+      <footer class="slide-footer"><span>Public-key parsing</span><span>45</span></footer>
+    </section>
+
+    <section class="slide" data-title="Parse private keys from standard formats">
+      <div class="kicker">Go · Private keys</div>
+      <div class="split">
+        <div class="stack">
+          <h2>Prefer PKCS #8 when you control the format.</h2>
+          <div class="compare">
+            <article><h3 class="accent">Generic</h3><p><code>PRIVATE KEY</code><br>PKCS #8 identifies the algorithm inside the structure.</p></article>
+            <article><h3 class="amber">Algorithm-specific</h3><p><code>RSA PRIVATE KEY</code> or <code>EC PRIVATE KEY</code><br>The PEM label selects the parser.</p></article>
+          </div>
+        </div>
+        <pre aria-label="Go code parsing PKCS8, PKCS1, and SEC1 private keys"><code>block, _ := pem.<span class="fn">Decode</span>(privatePEM)
+<span class="kw">if</span> block == <span class="kw">nil</span> { <span class="kw">return nil</span>, errNoPEM }
+
+<span class="kw">switch</span> block.Type {
+<span class="kw">case</span> <span class="str">"PRIVATE KEY"</span>:
+    <span class="kw">return</span> x509.<span class="fn">ParsePKCS8PrivateKey</span>(block.Bytes)
+<span class="kw">case</span> <span class="str">"RSA PRIVATE KEY"</span>:
+    <span class="kw">return</span> x509.<span class="fn">ParsePKCS1PrivateKey</span>(block.Bytes)
+<span class="kw">case</span> <span class="str">"EC PRIVATE KEY"</span>:
+    <span class="kw">return</span> x509.<span class="fn">ParseECPrivateKey</span>(block.Bytes)
+<span class="kw">default</span>:
+    <span class="kw">return nil</span>, fmt.<span class="fn">Errorf</span>(<span class="str">"unsupported %q"</span>, block.Type)
+}</code></pre>
+      </div>
+      <footer class="slide-footer"><span>Private-key parsing</span><span>46</span></footer>
+    </section>
+
+    <section class="slide" data-title="Type-check keys returned by generic parsers">
+      <div class="kicker">Go · Dynamic key types</div>
+      <div class="split">
+        <div class="stack">
+          <h2>Parsing the container is only the first validation step.</h2>
+          <ul class="clean-list">
+            <li>Assert the algorithm your protocol expects</li>
+            <li>Validate RSA private keys before use</li>
+            <li>Reject unexpected key types and sizes</li>
+            <li>Keep parse errors generic at trust boundaries</li>
+          </ul>
+        </div>
+        <pre aria-label="Go code checking the concrete type of a parsed PKCS8 key"><code>parsed, err := x509.<span class="fn">ParsePKCS8PrivateKey</span>(der)
+<span class="kw">if</span> err != <span class="kw">nil</span> { <span class="kw">return</span> err }
+
+<span class="kw">switch</span> key := parsed.(<span class="kw">type</span>) {
+<span class="kw">case</span> *rsa.PrivateKey:
+    <span class="kw">return</span> key.<span class="fn">Validate</span>()
+<span class="kw">case</span> *ecdsa.PrivateKey:
+    <span class="kw">return</span> <span class="fn">useECDSA</span>(key)
+<span class="kw">case</span> ed25519.PrivateKey:
+    <span class="kw">return</span> <span class="fn">useEd25519</span>(key)
+<span class="kw">case</span> *ecdh.PrivateKey:
+    <span class="kw">return</span> <span class="fn">useECDH</span>(key)
+<span class="kw">default</span>:
+    <span class="kw">return</span> fmt.<span class="fn">Errorf</span>(<span class="str">"unsupported key %T"</span>, parsed)
+}</code></pre>
+      </div>
+      <footer class="slide-footer"><span>Key type validation</span><span>47</span></footer>
+    </section>
+
+    <section class="slide" data-title="Marshal portable keys as PKIX and PKCS8">
+      <div class="kicker">Go · Encode keys</div>
+      <div class="split">
+        <div class="stack">
+          <h2>Marshal to DER, then wrap in PEM when text is needed.</h2>
+          <div class="asym-flow" role="img" aria-label="A Go key is marshaled into DER and then encoded as a PEM block">
+            <div class="asym-node"><strong>Go key</strong><span>Concrete key value</span></div>
+            <div class="arrow">→</div>
+            <div class="asym-node core"><strong>x509.Marshal…</strong><span>ASN.1 DER bytes</span></div>
+            <div class="arrow">→</div>
+            <div class="asym-node"><strong>pem.Encode</strong><span>Portable text block</span></div>
+          </div>
+        </div>
+        <pre aria-label="Go code encoding public and private keys as PEM"><code>publicDER, err := x509.<span class="fn">MarshalPKIXPublicKey</span>(publicKey)
+publicPEM := pem.<span class="fn">EncodeToMemory</span>(&amp;pem.Block{
+    Type: <span class="str">"PUBLIC KEY"</span>, Bytes: publicDER,
+})
+
+privateDER, err := x509.<span class="fn">MarshalPKCS8PrivateKey</span>(privateKey)
+privatePEM := pem.<span class="fn">EncodeToMemory</span>(&amp;pem.Block{
+    Type: <span class="str">"PRIVATE KEY"</span>, Bytes: privateDER,
+})
+
+<span class="cm">// Treat privatePEM as a secret.</span></code></pre>
+      </div>
+      <footer class="slide-footer"><span>Key serialization</span><span>48</span></footer>
+    </section>
+
+    <section class="slide" data-title="TLS and key parsing implementation rules">
+      <div class="kicker">Before shipping</div>
+      <div class="stack">
+        <h2>Parsing successfully does not mean trusting safely.</h2>
+        <ol class="checklist">
+          <li>Keep normal TLS certificate verification enabled.</li>
+          <li>Validate DNS names through SAN—not Common Name.</li>
+          <li>Send the leaf certificate and intermediate chain.</li>
+          <li>Use system roots or a deliberately scoped private pool.</li>
+          <li>Match the PEM label to the exact DER parser.</li>
+          <li>Prefer PKIX public keys and PKCS #8 private keys.</li>
+          <li>Reject unexpected algorithms, usages, and key sizes.</li>
+          <li>Store private keys in a KMS/HSM when possible.</li>
+        </ol>
+        <p class="small">Go’s PKCS #8 parser handles unencrypted keys. Legacy <code>x509.DecryptPEMBlock</code> is deprecated because its RFC 1423 encryption is unauthenticated; use a KMS or a reviewed encrypted-key workflow.</p>
+      </div>
+      <footer class="slide-footer"><span>TLS and parsing checklist</span><span>49</span></footer>
+    </section>
+
+    <section class="slide" data-title="Use protocols, not raw primitives">
+      <div class="kicker">The safer abstraction</div>
+      <div class="stack">
+        <h2>For network security, start with TLS—not a custom protocol.</h2>
+        <p class="statement"><span class="accent">crypto/tls</span> combines identity, key agreement, encryption, integrity, and safe negotiation.</p>
+        <div class="warning">
+          <div class="mark">!</div>
+          <div><h3>Cryptography is easy to assemble incorrectly.</h3><p>Do not invent an algorithm, reuse a nonce, disable certificate verification, compare secrets normally, or embed long-lived keys in source code.</p></div>
+        </div>
+      </div>
+      <footer class="slide-footer"><span>Protocols</span><span>50</span></footer>
+    </section>
+
+    <section class="slide" data-title="Hashing">
+      <div class="kicker">Deep dive · Hashing</div>
+      <div class="hero">
+        <h2 class="statement">A small fingerprint for <span class="accent">any amount of data.</span></h2>
+        <p class="lead">Hashing is one-way, deterministic, and sensitive to every input bit. Those properties make it a versatile building block—not encryption.</p>
+      </div>
+      <footer class="slide-footer"><span>Hashing</span><span>51</span></footer>
+    </section>
+
+    <section class="slide" data-title="How a cryptographic hash works">
+      <div class="kicker">Mental model</div>
+      <div class="stack">
+        <h2>Any input becomes a fixed-size digest.</h2>
+        <div class="hash-machine" role="img" aria-label="A message passes through SHA-256 and becomes a fixed-size digest">
+          <div class="machine-box"><strong>Input</strong><code>"hello"<br>5 bytes</code></div>
+          <div class="arrow">→</div>
+          <div class="machine-box function"><strong>SHA-256</strong><code>hash function</code></div>
+          <div class="arrow">→</div>
+          <div class="machine-box"><strong>256-bit digest</strong><code class="digest">2cf24dba5fb0a30e…9824</code></div>
+        </div>
+        <div class="property-row">
+          <article><h3>Deterministic</h3><p>The same bytes always produce the same digest.</p></article>
+          <article><h3>One-way</h3><p>The digest does not reveal a practical route back to the input.</p></article>
+          <article><h3>Fixed size</h3><p>One byte or one terabyte still yields 32 bytes with SHA-256.</p></article>
+        </div>
+      </div>
+      <footer class="slide-footer"><span>Hash function</span><span>52</span></footer>
+    </section>
+
+    <section class="slide" data-title="The avalanche effect">
+      <div class="kicker">Tiny change, unrelated digest</div>
+      <div class="stack">
+        <h2>A one-character change should scramble the result.</h2>
+        <div class="avalanche" role="img" aria-label="Two nearly identical messages produce very different SHA-256 digests">
+          <div class="input-pair">
+            <div class="input-line">Transfer $<span class="changed">1</span>00</div>
+            <div class="input-line">Transfer $<span class="changed">9</span>00</div>
+          </div>
+          <div class="arrow">→</div>
+          <div class="digest-pair">
+            <div class="digest-line">1aab7a327cf10dae e4c290ae2c96d6c3 21e082d318de8f30 173910430de917e1</div>
+            <div class="digest-line">7d7ba8364b1a4f1d 54096e3f1200cacc 8a2843f90af06f0c 1891ad4fef9c2e95</div>
+          </div>
+        </div>
+        <p class="lead">A good cryptographic hash hides patterns in the input. You cannot infer whether two messages are “almost the same” from their digests.</p>
+      </div>
+      <footer class="slide-footer"><span>Hash properties</span><span>53</span></footer>
+    </section>
+
+    <section class="slide" data-title="What hashing is used for">
+      <div class="kicker">Four common jobs</div>
+      <div class="stack">
+        <h2>The same primitive supports different constructions.</h2>
+        <div class="use-cases">
+          <article class="use-case"><span class="use-num">01</span><div><h3>Integrity checksum</h3><p>Detect whether downloaded or stored bytes changed.</p><code>sha256.Sum256(data)</code></div></article>
+          <article class="use-case"><span class="use-num">02</span><div><h3>Content address</h3><p>Use the digest as an ID for caching and deduplication.</p><code>id := hex.EncodeToString(sum[:])</code></div></article>
+          <article class="use-case"><span class="use-num">03</span><div><h3>Message authentication</h3><p>Combine a secret key and hash with HMAC.</p><code>hmac.New(sha256.New, key)</code></div></article>
+          <article class="use-case"><span class="use-num">04</span><div><h3>Password verification</h3><p>Use a slow, salted password hash such as Argon2id.</p><code>argon2.IDKey(password, salt, …)</code></div></article>
+        </div>
+      </div>
+      <footer class="slide-footer"><span>Use cases</span><span>54</span></footer>
+    </section>
+
+    <section class="slide" data-title="Verify file integrity with SHA-256">
+      <div class="kicker">Use case 01 · Integrity</div>
+      <div class="split">
+        <div class="stack">
+          <h2>Compare the bytes you received with a trusted digest.</h2>
+          <div class="trust-diagram" role="img" aria-label="Expected and calculated hashes match for an unchanged file and differ for a changed file">
+            <div class="trust-row"><span class="label">publisher</span><span class="arrow">→</span><span class="value">expected: e3b0…b855</span></div>
+            <div class="trust-row"><span class="label">download</span><span class="arrow">→</span><span class="value">actual: &nbsp;&nbsp;e3b0…b855 ✓</span></div>
+            <div class="trust-row bad"><span class="label">tampered</span><span class="arrow">→</span><span class="value">actual: &nbsp;&nbsp;91c2…0a47 ✕</span></div>
+          </div>
+        </div>
+        <pre aria-label="Go code to verify a SHA-256 checksum"><code><span class="kw">func</span> <span class="fn">validDigest</span>(data []<span class="kw">byte</span>, expected []<span class="kw">byte</span>) <span class="kw">bool</span> {
+    got := sha256.<span class="fn">Sum256</span>(data)
+    <span class="kw">return</span> bytes.<span class="fn">Equal</span>(got[:], expected)
+}
+
+<span class="cm">// Trust matters: obtain expected from</span>
+<span class="cm">// a separate authenticated source.</span></code></pre>
+      </div>
+      <footer class="slide-footer"><span>crypto/sha256</span><span>55</span></footer>
+    </section>
+
+    <section class="slide" data-title="Use a digest as a content ID">
+      <div class="kicker">Use case 02 · Content addressing</div>
+      <div class="split">
+        <div class="stack">
+          <h2>The content itself determines its name.</h2>
+          <div class="hash-machine" role="img" aria-label="File content is hashed to create its storage identifier">
+            <div class="machine-box"><strong>blob</strong><code>image bytes</code></div>
+            <div class="arrow">→</div>
+            <div class="machine-box function"><strong>SHA-256</strong></div>
+            <div class="arrow">→</div>
+            <div class="machine-box"><strong>object ID</strong><code class="digest">9fd4…7c21</code></div>
+          </div>
+          <p class="small">Same content → same ID. Different content → almost certainly a different ID.</p>
+        </div>
+        <pre aria-label="Go code to create a content-addressed identifier"><code><span class="kw">func</span> <span class="fn">contentID</span>(blob []<span class="kw">byte</span>) <span class="kw">string</span> {
+    sum := sha256.<span class="fn">Sum256</span>(blob)
+    <span class="kw">return</span> hex.<span class="fn">EncodeToString</span>(sum[:])
+}
+
+id := <span class="fn">contentID</span>(blob)
+path := filepath.<span class="fn">Join</span>(<span class="str">"objects"</span>, id)</code></pre>
+      </div>
+      <footer class="slide-footer"><span>Content addressing</span><span>56</span></footer>
+    </section>
+
+    <section class="slide" data-title="Authenticate a message with HMAC">
+      <div class="kicker">Use case 03 · Authenticity</div>
+      <div class="split">
+        <div class="stack">
+          <h2>A plain hash has no secret. HMAC does.</h2>
+          <div class="hash-machine" role="img" aria-label="A secret key and a message produce an HMAC authentication tag">
+            <div class="machine-box"><strong>Key + message</strong><code>secret<br>payload</code></div>
+            <div class="arrow">→</div>
+            <div class="machine-box function"><strong>HMAC</strong><code>SHA-256</code></div>
+            <div class="arrow">→</div>
+            <div class="machine-box"><strong>Auth tag</strong><code class="digest">74ae…9b10</code></div>
+          </div>
+          <p class="small">Anyone can hash a message. Only someone with the shared key can produce the expected HMAC.</p>
+        </div>
+        <pre aria-label="Go code to create and verify an HMAC"><code><span class="kw">func</span> <span class="fn">tag</span>(message, key []<span class="kw">byte</span>) []<span class="kw">byte</span> {
+    mac := hmac.<span class="fn">New</span>(sha256.New, key)
+    mac.<span class="fn">Write</span>(message)
+    <span class="kw">return</span> mac.<span class="fn">Sum</span>(<span class="kw">nil</span>)
+}
+
+expected := <span class="fn">tag</span>(message, key)
+valid := hmac.<span class="fn">Equal</span>(received, expected)</code></pre>
+      </div>
+      <footer class="slide-footer"><span>crypto/hmac</span><span>57</span></footer>
+    </section>
+
+    <section class="slide" data-title="What HMAC guarantees">
+      <div class="kicker">HMAC · Security boundary</div>
+      <div class="stack">
+        <h2>HMAC proves that the sender knew the shared key.</h2>
+        <div class="compare">
+          <article>
+            <h3 class="accent">What it provides</h3>
+            <ul>
+              <li>Integrity: changed bytes fail verification</li>
+              <li>Authenticity: the tag requires the secret key</li>
+              <li>Fast authentication for messages and API requests</li>
+            </ul>
+          </article>
+          <article>
+            <h3 class="red">What it does not provide</h3>
+            <ul>
+              <li>Confidentiality: the message remains readable</li>
+              <li>Replay protection: a valid message can be resent</li>
+              <li>Non-repudiation: either key holder can create a tag</li>
+            </ul>
+          </article>
+        </div>
+        <div class="warning"><div class="mark">≠</div><div><h3>HMAC is not encryption and not a digital signature.</h3><p>It authenticates possession of a shared secret. It does not identify which holder created the message.</p></div></div>
+      </div>
+      <footer class="slide-footer"><span>HMAC guarantees</span><span>58</span></footer>
+    </section>
+
+    <section class="slide" data-title="How HMAC is constructed">
+      <div class="kicker">HMAC · Under the hood</div>
+      <div class="stack">
+        <h2>HMAC hashes twice with two key-derived pads.</h2>
+        <div class="hmac-construction" role="img" aria-label="HMAC computes an inner hash over the padded key and message, then an outer hash over a differently padded key and the inner digest">
+          <div class="hmac-rounds">
+            <div class="hmac-round"><strong>1 · Inner hash</strong><code>inner = H((K′ ⊕ ipad) ∥ message)</code></div>
+            <div class="hmac-round"><strong>2 · Outer hash</strong><code>tag = H((K′ ⊕ opad) ∥ inner)</code></div>
+          </div>
+          <div class="arrow">→</div>
+          <div class="hmac-formula">HMAC(K, m)<br>= H((K′ ⊕ opad) ∥<br>&nbsp;&nbsp;H((K′ ⊕ ipad) ∥ m))</div>
+        </div>
+        <p class="lead">The inner and outer pads separate the two hash operations. Use the standard construction—never invent <code>hash(key || message)</code>.</p>
+        <p class="small">K′ is the key normalized to the hash block size; ∥ means concatenation.</p>
+      </div>
+      <footer class="slide-footer"><span>RFC 2104 construction</span><span>59</span></footer>
+    </section>
+
+    <section class="slide" data-title="HMAC sender and receiver flow">
+      <div class="kicker">HMAC · Verification flow</div>
+      <div class="stack">
+        <h2>The receiver recomputes the tag over the exact same bytes.</h2>
+        <div class="message-lane" role="img" aria-label="A sender computes a tag, sends message and tag over an untrusted network, and a receiver recomputes and compares the tag">
+          <div class="lane-node"><strong>Sender</strong><span>HMAC(key, message) → tag</span></div>
+          <div class="arrow">→</div>
+          <div class="lane-node"><strong>Untrusted network</strong><span>message + tag<br>Both may be visible</span></div>
+          <div class="arrow">→</div>
+          <div class="lane-node"><strong>Receiver</strong><span>Recompute tag<br>Constant-time compare</span></div>
+        </div>
+        <div class="property-row">
+          <article><h3>Match</h3><p>Accept only after all policy checks pass.</p></article>
+          <article><h3>Message changed</h3><p>The recomputed tag differs.</p></article>
+          <article><h3>Wrong key</h3><p>The recomputed tag also differs.</p></article>
+        </div>
+      </div>
+      <footer class="slide-footer"><span>Authentication flow</span><span>60</span></footer>
+    </section>
+
+    <section class="slide" data-title="Sign canonical bytes and stop replays">
+      <div class="kicker">HMAC · API requests</div>
+      <div class="split">
+        <div class="stack">
+          <h2>Authenticate the context—not only the body.</h2>
+          <div class="formula"><span class="cyan">method</span> + "\n" + <span class="cyan">path</span> + "\n" +<br><span class="amber">timestamp</span> + "\n" + <span class="amber">nonce</span> + "\n" +<br><span class="accent">SHA-256(body)</span></div>
+          <ul class="clean-list">
+            <li>Define one canonical byte representation</li>
+            <li>Reject expired timestamps</li>
+            <li>Reject a nonce that was already accepted</li>
+          </ul>
+        </div>
+        <pre aria-label="Go pseudocode for signing an API request with HMAC"><code>bodyHash := sha256.<span class="fn">Sum256</span>(body)
+canonical := fmt.<span class="fn">Sprintf</span>(
+    <span class="str">"%s\n%s\n%d\n%s\n%x"</span>,
+    method, path, timestamp, nonce, bodyHash,
+)
+
+mac := hmac.<span class="fn">New</span>(sha256.New, key)
+mac.<span class="fn">Write</span>([]<span class="kw">byte</span>(canonical))
+tag := mac.<span class="fn">Sum</span>(<span class="kw">nil</span>)
+
+<span class="cm">// Receiver: check time + nonce, rebuild</span>
+<span class="cm">// canonical bytes, then hmac.Equal.</span></code></pre>
+      </div>
+      <footer class="slide-footer"><span>Replay protection</span><span>61</span></footer>
+    </section>
+
+    <section class="slide" data-title="HMAC implementation rules">
+      <div class="kicker">HMAC · Before shipping</div>
+      <div class="stack">
+        <h2>Most HMAC failures happen around the primitive.</h2>
+        <ol class="checklist">
+          <li>Generate keys with <code>crypto/rand</code>.</li>
+          <li>Use at least 32 random bytes for HMAC-SHA-256.</li>
+          <li>Use a separate key for each purpose and trust boundary.</li>
+          <li>Version keys so they can be rotated safely.</li>
+          <li>Compare tags with <code>hmac.Equal</code>.</li>
+          <li>Authenticate every field that affects behavior.</li>
+          <li>Add timestamps and nonces when replay matters.</li>
+          <li>Never log keys or include them in source code.</li>
+        </ol>
+        <p class="small">Transmit a key identifier with the message when receivers need to select among active rotation keys. The identifier is not secret.</p>
+      </div>
+      <footer class="slide-footer"><span>HMAC checklist</span><span>62</span></footer>
+    </section>
+
+    <section class="slide" data-title="Hash passwords slowly">
+      <div class="kicker">Use case 04 · Passwords</div>
+      <div class="split">
+        <div class="stack">
+          <h2>Passwords need a deliberately expensive hash.</h2>
+          <div class="flow" role="img" aria-label="A password and random salt pass through Argon2id to produce a stored verifier">
+            <div class="flow-node"><strong>Password + salt</strong><span>Salt is random and public</span></div>
+            <div class="arrow">→</div>
+            <div class="flow-node"><strong class="accent">Argon2id</strong><span>Time + memory cost</span></div>
+            <div class="arrow">→</div>
+            <div class="flow-node"><strong>Verifier</strong><span>Store digest, salt, parameters</span></div>
+          </div>
+          <div class="warning"><div class="mark">!</div><div><h3>Never store SHA-256(password).</h3><p>Fast hashes let attackers test guesses quickly. Use Argon2id, scrypt, or bcrypt with a unique salt.</p></div></div>
+        </div>
+        <pre aria-label="Go code to derive a password verifier with Argon2id"><code><span class="kw">import</span> <span class="str">"golang.org/x/crypto/argon2"</span>
+
+salt := <span class="fn">make</span>([]<span class="kw">byte</span>, 16)
+rand.<span class="fn">Read</span>(salt)
+
+digest := argon2.<span class="fn">IDKey</span>(
+    []<span class="kw">byte</span>(password), salt,
+    3, 64*1024, 4, 32,
+)
+
+<span class="cm">// Store the salt, cost parameters,</span>
+<span class="cm">// algorithm version, and digest.</span></code></pre>
+      </div>
+      <footer class="slide-footer"><span>golang.org/x/crypto/argon2</span><span>63</span></footer>
+    </section>
+
+    <section class="slide" data-title="Store passwords safely">
+      <div class="kicker">Deep dive · Password storage</div>
+      <div class="hero">
+        <h2 class="statement">Store a <span class="accent">slow verifier</span>—never the password.</h2>
+        <p class="lead">Argon2id and bcrypt are designed to make every offline password guess expensive while keeping legitimate logins practical.</p>
+      </div>
+      <footer class="slide-footer"><span>Password storage</span><span>64</span></footer>
+    </section>
+
+    <section class="slide" data-title="Design for a stolen password database">
+      <div class="kicker">Threat model · Offline guessing</div>
+      <div class="stack">
+        <h2>Assume an attacker can copy every stored verifier.</h2>
+        <div class="message-lane" role="img" aria-label="An attacker steals a password database and tests password guesses offline without contacting the application">
+          <div class="lane-node"><strong>Database leak</strong><span>Hashes · salts · parameters</span></div>
+          <div class="arrow">→</div>
+          <div class="lane-node"><strong>Offline attacker</strong><span>No rate limit<br>Massive parallel guessing</span></div>
+          <div class="arrow">→</div>
+          <div class="lane-node"><strong class="accent">Password hash</strong><span>Raises cost per guess</span></div>
+        </div>
+        <div class="compare">
+          <article><h3 class="red">Fast SHA-256</h3><p class="lead">Excellent for data integrity; disastrous for passwords because guesses are cheap.</p></article>
+          <article><h3 class="accent">Argon2id / bcrypt</h3><p class="lead">Adjustable work makes each guess consume meaningful resources.</p></article>
+        </div>
+        <p class="small">Password hashing slows cracking; it cannot rescue weak or reused passwords. Rate limits and MFA address online attacks separately.</p>
+      </div>
+      <footer class="slide-footer"><span>Offline attack model</span><span>65</span></footer>
+    </section>
+
+    <section class="slide" data-title="Salt, cost, and optional pepper have different jobs">
+      <div class="kicker">Password-hashing ingredients</div>
+      <div class="stack">
+        <h2>Store the salt and cost. Keep only the pepper secret.</h2>
+        <div class="triad">
+          <article class="principle">
+            <h3>Unique salt</h3>
+            <p>Random per password. Prevents precomputation and makes equal passwords produce different hashes.</p>
+            <span class="num">01</span>
+          </article>
+          <article class="principle">
+            <h3>Work parameters</h3>
+            <p>Memory, iterations, parallelism, or bcrypt cost. Store them with the verifier for future upgrades.</p>
+            <span class="num">02</span>
+          </article>
+          <article class="principle">
+            <h3>Optional pepper</h3>
+            <p>A shared secret kept outside the database—ideally in a KMS or HSM. Rotation usually requires password re-entry.</p>
+            <span class="num">03</span>
+          </article>
+        </div>
+        <div class="formula">stored record = <span class="accent">algorithm + parameters + salt + digest</span><br>not stored with record = <span class="amber">optional pepper</span></div>
+      </div>
+      <footer class="slide-footer"><span>Salt · cost · pepper</span><span>66</span></footer>
+    </section>
+
+    <section class="slide" data-title="Use a self-describing Argon2id string">
+      <div class="kicker">Portable storage format</div>
+      <div class="stack">
+        <h2>One string should contain everything needed to verify.</h2>
+        <div class="phc-string" role="img" aria-label="An Argon2id PHC string contains the algorithm, version, parameters, salt, and digest">
+          <div class="phc-part"><strong>$argon2id</strong><span>algorithm</span></div>
+          <div class="phc-part"><strong>$v=19</strong><span>Argon2 version</span></div>
+          <div class="phc-part"><strong>$m=19456,t=2,p=1</strong><span>memory KiB · passes · threads</span></div>
+          <div class="phc-part"><strong>$c2FsdA</strong><span>base64 salt</span></div>
+          <div class="phc-part"><strong>$ZGlnZXN0</strong><span>base64 digest</span></div>
+        </div>
+        <pre aria-label="Example Argon2id PHC string"><code>$argon2id$v=19$m=19456,t=2,p=1$&lt;base64-salt&gt;$&lt;base64-digest&gt;</code></pre>
+        <div class="property-row">
+          <article><h3>Authenticate</h3><p>Parse the stored parameters and reproduce the digest.</p></article>
+          <article><h3>Upgrade</h3><p>Compare stored parameters with today’s policy.</p></article>
+          <article><h3>Interoperate</h3><p>The format travels with the database record.</p></article>
+        </div>
+      </div>
+      <footer class="slide-footer"><span>PHC string format</span><span>67</span></footer>
+    </section>
+
+    <section class="slide" data-title="Tune Argon2id for the deployment">
+      <div class="kicker">Memory · time · parallelism</div>
+      <div class="decision">
+        <div class="stack">
+          <h2>Increase attacker cost without creating a login DoS.</h2>
+          <div class="cost-meter" role="img" aria-label="Argon2id cost increases with memory, passes, and parallelism">
+            <div class="cost-bar"><strong>m · memory</strong><span>Raises RAM per guess</span></div>
+            <div class="cost-bar"><strong>t · passes</strong><span>Raises CPU time</span></div>
+            <div class="cost-bar"><strong>p · threads</strong><span>Controls parallelism</span></div>
+          </div>
+        </div>
+        <div class="stack">
+          <div class="mode-list">
+            <div class="mode-row"><strong class="accent">OWASP baseline</strong><span><code>m=19 MiB, t=2, p=1</code></span></div>
+            <div class="mode-row"><strong class="cyan">RFC profile</strong><span><code>m=64 MiB, t=3, p=4</code> when resources allow</span></div>
+            <div class="mode-row"><strong class="amber">Your policy</strong><span>Benchmark on production-class hardware under expected concurrency</span></div>
+          </div>
+          <div class="warning"><div class="mark">!</div><div><h3>Bound parameters read from storage.</h3><p>A malformed record requesting extreme memory or CPU can become a denial-of-service input.</p></div></div>
+        </div>
+      </div>
+      <footer class="slide-footer"><span>Argon2id parameters</span><span>68</span></footer>
+    </section>
+
+    <section class="slide" data-title="Hash a password with Argon2id">
+      <div class="kicker">Go · Registration or password change</div>
+      <div class="split">
+        <div class="stack">
+          <h2>Generate a fresh salt for every new verifier.</h2>
+          <div class="flow" role="img" aria-label="A password and random salt are processed by Argon2id and encoded as a self-describing stored string">
+            <div class="flow-node"><strong>Password + salt</strong><span>Salt from crypto/rand</span></div>
+            <div class="arrow">→</div>
+            <div class="flow-node"><strong class="accent">argon2.IDKey</strong><span>m=19 MiB · t=2 · p=1</span></div>
+            <div class="arrow">→</div>
+            <div class="flow-node"><strong>PHC string</strong><span>Store one value</span></div>
+          </div>
+        </div>
+        <pre aria-label="Go code hashing and encoding a password with Argon2id"><code><span class="kw">func</span> <span class="fn">hashPassword</span>(password []<span class="kw">byte</span>) (<span class="kw">string</span>, <span class="kw">error</span>) {
+    salt := <span class="fn">make</span>([]<span class="kw">byte</span>, 16)
+    <span class="kw">if</span> _, err := rand.<span class="fn">Read</span>(salt); err != <span class="kw">nil</span> {
+        <span class="kw">return</span> <span class="str">""</span>, err
+    }
+    digest := argon2.<span class="fn">IDKey</span>(
+        password, salt, 2, 19*1024, 1, 32,
+    )
+    <span class="kw">return</span> <span class="fn">encodePHC</span>(argon2.Version,
+        19*1024, 2, 1, salt, digest), <span class="kw">nil</span>
+}</code></pre>
+      </div>
+      <footer class="slide-footer"><span>Argon2id hashing</span><span>69</span></footer>
+    </section>
+
+    <section class="slide" data-title="Verify an Argon2id password safely">
+      <div class="kicker">Go · Login verification</div>
+      <div class="split">
+        <div class="stack">
+          <h2>Recompute using stored parameters, then compare in constant time.</h2>
+          <ul class="clean-list">
+            <li>Parse and validate the PHC string</li>
+            <li>Reject unsupported versions and excessive costs</li>
+            <li>Derive the candidate digest</li>
+            <li>Use <code>subtle.ConstantTimeCompare</code></li>
+          </ul>
+        </div>
+        <pre aria-label="Go code verifying an Argon2id password"><code><span class="kw">func</span> <span class="fn">verifyPassword</span>(stored <span class="kw">string</span>, password []<span class="kw">byte</span>) (<span class="kw">bool</span>, <span class="kw">error</span>) {
+    p, salt, expected, err := <span class="fn">decodePHC</span>(stored)
+    <span class="kw">if</span> err != <span class="kw">nil</span> || !<span class="fn">allowed</span>(p) {
+        <span class="kw">return false</span>, errors.<span class="fn">New</span>(<span class="str">"invalid verifier"</span>)
+    }
+    got := argon2.<span class="fn">IDKey</span>(password, salt,
+        p.time, p.memory, p.threads, <span class="kw">uint32</span>(<span class="fn">len</span>(expected)))
+
+    ok := subtle.<span class="fn">ConstantTimeCompare</span>(got, expected) == 1
+    <span class="kw">return</span> ok, <span class="kw">nil</span>
+}</code></pre>
+      </div>
+      <footer class="slide-footer"><span>Argon2id verification</span><span>70</span></footer>
+    </section>
+
+    <section class="slide" data-title="Use bcrypt for compatible existing systems">
+      <div class="kicker">Go · bcrypt</div>
+      <div class="split">
+        <div class="stack">
+          <h2>bcrypt manages its salt and format for you.</h2>
+          <div class="compare">
+            <article><h3 class="accent">Strength</h3><p>Simple mature API, adaptive CPU cost, widely deployed verifier format.</p></article>
+            <article><h3 class="red">Limit</h3><p>Passwords longer than 72 bytes are rejected by Go’s implementation.</p></article>
+          </div>
+          <p class="small">Prefer Argon2id for new systems. Keep bcrypt when compatibility or a safe incremental migration matters.</p>
+        </div>
+        <pre aria-label="Go code hashing, verifying, and checking cost with bcrypt"><code><span class="kw">const</span> targetCost = 12 <span class="cm">// benchmark this</span>
+
+stored, err := bcrypt.<span class="fn">GenerateFromPassword</span>(
+    password, targetCost,
+)
+<span class="kw">if</span> errors.<span class="fn">Is</span>(err, bcrypt.ErrPasswordTooLong) {
+    <span class="kw">return</span> errors.<span class="fn">New</span>(<span class="str">"password exceeds 72 bytes"</span>)
+}
+
+err = bcrypt.<span class="fn">CompareHashAndPassword</span>(stored, candidate)
+valid := err == <span class="kw">nil</span>
+
+cost, err := bcrypt.<span class="fn">Cost</span>(stored)
+needsRehash := err == <span class="kw">nil</span> &amp;&amp; cost &lt; targetCost</code></pre>
+      </div>
+      <footer class="slide-footer"><span>golang.org/x/crypto/bcrypt</span><span>71</span></footer>
+    </section>
+
+    <section class="slide" data-title="Upgrade password hashes during successful login">
+      <div class="kicker">Migration without plaintext storage</div>
+      <div class="stack">
+        <h2>The user’s next correct password is the migration opportunity.</h2>
+        <div class="message-lane" role="img" aria-label="A successful login verifies an old bcrypt hash, creates a new Argon2id verifier, and atomically replaces the stored record">
+          <div class="lane-node"><strong>Verify old record</strong><span>bcrypt or weaker Argon2id policy</span></div>
+          <div class="arrow">→</div>
+          <div class="lane-node"><strong>Policy check</strong><span>Algorithm · version · cost</span></div>
+          <div class="arrow">→</div>
+          <div class="lane-node"><strong class="accent">Rehash + replace</strong><span>Fresh Argon2id salt and current parameters</span></div>
+        </div>
+        <div class="compare">
+          <article><h3 class="cyan">Lazy migration</h3><p class="lead">Upgrade after a successful login. No mass password reset is required.</p></article>
+          <article><h3 class="amber">Inactive accounts</h3><p class="lead">Old records remain until login; expire or reset them according to risk.</p></article>
+        </div>
+        <p class="small">Update the verifier atomically and only after authentication succeeds. Never “upgrade” using the old hash as if it were the password.</p>
+      </div>
+      <footer class="slide-footer"><span>Password-hash migration</span><span>72</span></footer>
+    </section>
+
+    <section class="slide" data-title="Password storage needs operational defenses">
+      <div class="kicker">Before shipping</div>
+      <div class="stack">
+        <h2>A strong hash is one layer of the authentication system.</h2>
+        <ol class="checklist">
+          <li>Allow long passphrases; cap unreasonable request sizes.</li>
+          <li>Rate-limit login attempts by account and network signals.</li>
+          <li>Return the same public error for unknown users and bad passwords.</li>
+          <li>Perform comparable work for nonexistent accounts.</li>
+          <li>Benchmark cost under peak authentication concurrency.</li>
+          <li>Store algorithm and parameters with every verifier.</li>
+          <li>Rehash after successful login when policy changes.</li>
+          <li>Add MFA and protect password-reset flows.</li>
+        </ol>
+        <div class="warning"><div class="mark">!</div><div><h3>Never log passwords, derived digests, or pepper values.</h3><p>Use byte slices carefully, limit secret exposure, and keep any pepper in a dedicated secret store—not beside the verifier database.</p></div></div>
+      </div>
+      <footer class="slide-footer"><span>Password checklist</span><span>73</span></footer>
+    </section>
+
+    <section class="slide" data-title="Choose the right hashing construction">
+      <div class="kicker">Decision guide</div>
+      <div class="decision">
+        <div class="stack">
+          <h2>“Hash it” is not a complete design.</h2>
+          <p class="lead">Start with the guarantee you need, then choose the construction.</p>
+        </div>
+        <div class="stack">
+          <ul class="decision-list">
+            <li><strong>Detect changes</strong><span>SHA-256 or SHA-3, plus a trusted expected digest</span></li>
+            <li><strong>Authenticate</strong><span>HMAC-SHA-256 with a strong secret key</span></li>
+            <li><strong>Store passwords</strong><span>Argon2id, scrypt, or bcrypt—salted and costly</span></li>
+            <li><strong>Sign data</strong><span>A digital-signature API such as Ed25519</span></li>
+          </ul>
+          <div class="warning"><div class="mark">×</div><div><h3>Do not choose MD5 or SHA-1 for security.</h3><p>They remain available for legacy compatibility, but collision attacks make them unsuitable for secure applications.</p></div></div>
+        </div>
+      </div>
+      <footer class="slide-footer"><span>Hashing choices</span><span>74</span></footer>
+    </section>
+
+    <section class="slide" data-title="Practical checklist">
+      <div class="kicker">Before shipping</div>
+      <div class="stack">
+        <h2>Make the secure path the boring path.</h2>
+        <ol class="checklist">
+          <li>Define the exact security goal and threat.</li>
+          <li>Use <code>crypto/rand</code> for secret randomness.</li>
+          <li>Prefer TLS and AEAD over hand-built schemes.</li>
+          <li>Let the library generate or validate nonces.</li>
+          <li>Keep keys outside code; plan rotation.</li>
+          <li>Use dedicated password hashing—not a fast hash.</li>
+          <li>Keep Go patched and scan dependencies.</li>
+          <li>Test failures: wrong key, changed data, bad cert.</li>
+        </ol>
+        <p class="small">Password hashing algorithms such as Argon2 and bcrypt live in <code>golang.org/x/crypto</code>, not the standard library.</p>
+      </div>
+      <footer class="slide-footer"><span>Practice</span><span>75</span></footer>
+    </section>
+
+    <section class="slide" data-title="Identify and avoid common cryptographic mistakes">
+      <div class="kicker">Final section · Defensive review</div>
+      <div class="hero">
+        <h2 class="statement">Cryptographic failures usually happen <span class="red">around</span> the algorithm.</h2>
+        <p class="lead">The primitive may be strong while randomness, nonces, trust, key storage, message formats, or error handling quietly remove the guarantee.</p>
+      </div>
+      <footer class="slide-footer"><span>Common mistakes</span><span>76</span></footer>
+    </section>
+
+    <section class="slide" data-title="Do not improvise secret randomness">
+      <div class="kicker">Mistake 01 · Predictable secrets</div>
+      <div class="stack">
+        <h2>Random-looking is not cryptographically unpredictable.</h2>
+        <div class="compare">
+          <article>
+            <h3 class="red">Avoid</h3>
+            <ul>
+              <li><code>math/rand</code> for keys, tokens, salts, or nonces</li>
+              <li>Time-based seeds and UUIDs as encryption keys</li>
+              <li>Hardcoded secrets or human-readable key strings</li>
+              <li>Using a password directly as an AES key</li>
+            </ul>
+          </article>
+          <article>
+            <h3 class="accent">Prefer</h3>
+            <ul>
+              <li><code>crypto/rand</code> or a managed KMS</li>
+              <li>Algorithm-sized uniformly random keys</li>
+              <li>Argon2id or another KDF for password-derived keys</li>
+              <li>Explicit error handling during key generation</li>
+            </ul>
+          </article>
+        </div>
+        <div class="formula"><span class="red">wrong:</span> key := []byte("my-secret-key")<br><span class="accent">right:</span> key := make([]byte, 32); _, err := rand.Read(key)</div>
+      </div>
+      <footer class="slide-footer"><span>Secure randomness</span><span>77</span></footer>
+    </section>
+
+    <section class="slide" data-title="Use constructions, not cryptographic ingredients">
+      <div class="kicker">Mistake 02 · Designing a custom scheme</div>
+      <div class="stack">
+        <div class="decision">
+          <div class="stack">
+            <h2>A secure primitive does not make a secure protocol.</h2>
+            <p class="lead">Composition determines whether confidentiality, integrity, identity, ordering, and replay guarantees survive.</p>
+          </div>
+          <div class="mode-list">
+            <div class="mode-row"><strong class="red">AES alone</strong><span>Use an AEAD mode such as AES-GCM—not raw blocks or ECB.</span></div>
+            <div class="mode-row"><strong class="red">CTR / CBC alone</strong><span>Encryption without authentication permits undetected changes.</span></div>
+            <div class="mode-row"><strong class="red">hash(key || msg)</strong><span>Use HMAC instead of inventing keyed hashing.</span></div>
+            <div class="mode-row"><strong class="red">custom handshake</strong><span>Use TLS, HPKE, or another reviewed protocol.</span></div>
+          </div>
+        </div>
+        <div class="warning"><div class="mark">↑</div><div><h3>Raise the abstraction level.</h3><p>Prefer APIs that implement the complete security property: HTTPS, AEAD, HMAC, Ed25519, password-hashing libraries, and envelope encryption.</p></div></div>
+      </div>
+      <footer class="slide-footer"><span>Safe constructions</span><span>78</span></footer>
+    </section>
+
+    <section class="slide" data-title="Nonce reuse can destroy AEAD security">
+      <div class="kicker">Mistake 03 · Misusing authenticated encryption</div>
+      <div class="stack">
+        <h2>AES-GCM needs a unique nonce for every message under one key.</h2>
+        <div class="nonce-sequence" role="img" aria-label="Unique nonces are safe and repeating a nonce under the same key is unsafe">
+          <div class="nonce">key K<br>nonce 01 ✓</div>
+          <div class="nonce">key K<br>nonce 02 ✓</div>
+          <div class="nonce">key K<br>nonce 03 ✓</div>
+          <div class="nonce reused">key K<br>nonce 02 ✕</div>
+        </div>
+        <div class="compare">
+          <article><h3 class="red">Common failures</h3><ul><li>Constant, reused, or truncated nonces</li><li>Discarding the authentication tag</li><li>Returning plaintext after <code>Open</code> fails</li><li>Not authenticating record identity as AAD</li></ul></article>
+          <article><h3 class="accent">Safer pattern</h3><ul><li>Generate or manage nonces in one helper</li><li>Store nonce with sealed ciphertext</li><li>Release plaintext only after <code>Open</code> succeeds</li><li>Bind version, record ID, and purpose with AAD</li></ul></article>
+        </div>
+      </div>
+      <footer class="slide-footer"><span>AEAD misuse</span><span>79</span></footer>
+    </section>
+
+    <section class="slide" data-title="Do not treat passwords like ordinary data">
+      <div class="kicker">Mistake 04 · Unsafe password storage</div>
+      <div class="stack">
+        <h2>Passwords should be verified—not decrypted.</h2>
+        <div class="compare">
+          <article>
+            <h3 class="red">Avoid</h3>
+            <ul>
+              <li>Plaintext or reversibly encrypted passwords</li>
+              <li>MD5, SHA-1, or SHA-256 password hashes</li>
+              <li>One global salt or no salt</li>
+              <li>Unbounded Argon2 parameters from stored input</li>
+              <li>Ignoring bcrypt’s 72-byte input limit</li>
+            </ul>
+          </article>
+          <article>
+            <h3 class="accent">Prefer</h3>
+            <ul>
+              <li>Argon2id for new systems</li>
+              <li>A unique random salt per password</li>
+              <li>Algorithm and cost stored with the verifier</li>
+              <li>Benchmarking under peak concurrency</li>
+              <li>Rehashing after login when policy changes</li>
+            </ul>
+          </article>
+        </div>
+        <p class="small">An optional pepper belongs in a separate secret store. It is not a replacement for salt, work factors, rate limits, or MFA.</p>
+      </div>
+      <footer class="slide-footer"><span>Password mistakes</span><span>80</span></footer>
+    </section>
+
+    <section class="slide" data-title="Parsing a certificate is not verifying it">
+      <div class="kicker">Mistake 05 · Broken TLS trust</div>
+      <div class="split">
+        <div class="stack">
+          <h2>TLS identity depends on validation—not successful decoding.</h2>
+          <div class="flow" role="img" aria-label="A parsed certificate must still pass chain, hostname, time, and usage verification">
+            <div class="flow-node"><strong>Parse</strong><span>Valid DER structure</span></div>
+            <div class="arrow">→</div>
+            <div class="flow-node"><strong>Verify</strong><span>Chain · SAN · time · usage</span></div>
+            <div class="arrow">→</div>
+            <div class="flow-node"><strong class="accent">Trust</strong><span>Expected peer identity</span></div>
+          </div>
+        </div>
+        <div class="stack">
+          <div class="warning"><div class="mark">!</div><div><h3><code>InsecureSkipVerify</code> enables machine-in-the-middle attacks.</h3><p>Do not use it as a production fix for certificate errors.</p></div></div>
+          <ul class="clean-list">
+            <li>Check SAN hostname or IP—not legacy Common Name</li>
+            <li>Send leaf plus intermediate certificates</li>
+            <li>Scope private root pools to the intended service</li>
+            <li>Keep Go and certificate roots current</li>
+          </ul>
+        </div>
+      </div>
+      <footer class="slide-footer"><span>TLS trust mistakes</span><span>81</span></footer>
+    </section>
+
+    <section class="slide" data-title="A leaked key defeats a strong algorithm">
+      <div class="kicker">Mistake 06 · Weak key lifecycle</div>
+      <div class="stack">
+        <div class="decision">
+          <div class="stack">
+            <h2>Keys require ownership from creation through destruction.</h2>
+            <p class="lead">The algorithm cannot protect a key copied into Git, logs, crash reports, broad configuration, or an unrestricted database.</p>
+          </div>
+          <ol class="checklist">
+            <li>Generate keys inside a KMS/HSM when possible.</li>
+            <li>Separate keys by environment, tenant, and purpose.</li>
+            <li>Grant decrypt/sign access only to required identities.</li>
+            <li>Store a non-secret key ID beside ciphertext.</li>
+            <li>Rotate while retaining controlled old-key access.</li>
+            <li>Audit key use and alert on unusual operations.</li>
+          </ol>
+        </div>
+        <div class="warning"><div class="mark">×</div><div><h3>Deleting a key can permanently destroy encrypted data.</h3><p>Rotation, revocation, archival retention, backup, and destruction need an explicit recovery-aware policy.</p></div></div>
+      </div>
+      <footer class="slide-footer"><span>Key management mistakes</span><span>82</span></footer>
+    </section>
+
+    <section class="slide" data-title="Authenticate the complete message context">
+      <div class="kicker">Mistake 07 · Protocol edge cases</div>
+      <div class="stack">
+        <h2>Valid cryptography can still authorize the wrong action.</h2>
+        <div class="use-cases">
+          <article class="use-case"><span class="use-num">01</span><div><h3>Replay</h3><p>A captured valid message is accepted again.</p><code>include timestamp + nonce; track use</code></div></article>
+          <article class="use-case"><span class="use-num">02</span><div><h3>Ambiguous bytes</h3><p>Sender and receiver sign different representations.</p><code>define one canonical encoding</code></div></article>
+          <article class="use-case"><span class="use-num">03</span><div><h3>Missing context</h3><p>A valid ciphertext or signature moves to another purpose.</p><code>authenticate method · path · ID · version</code></div></article>
+          <article class="use-case"><span class="use-num">04</span><div><h3>Oracle errors</h3><p>Detailed failures reveal secret-dependent information.</p><code>return uniform public errors</code></div></article>
+        </div>
+        <p class="small">Check every error. Use <code>hmac.Equal</code> or constant-time comparison for secret authentication values. Fuzz parsers and corrupted-message paths.</p>
+      </div>
+      <footer class="slide-footer"><span>Protocol mistakes</span><span>83</span></footer>
+    </section>
+
+    <section class="slide" data-title="Cryptographic review checklist">
+      <div class="kicker">Final review</div>
+      <div class="stack">
+        <h2>Review the complete guarantee—not only the algorithm name.</h2>
+        <ol class="checklist">
+          <li>Is the threat and required property explicit?</li>
+          <li>Is a reviewed protocol or high-level API available?</li>
+          <li>Are keys, salts, and tokens generated securely?</li>
+          <li>Are keys scoped, stored, versioned, and rotatable?</li>
+          <li>Does encryption authenticate data and context?</li>
+          <li>Can a nonce ever repeat under the same key?</li>
+          <li>Are peer identities and certificate chains verified?</li>
+          <li>Are replay, ordering, and canonicalization handled?</li>
+          <li>Do negative tests alter every protected component?</li>
+          <li>Are Go, dependencies, and vulnerability scans current?</li>
+        </ol>
+        <div class="formula"><span class="accent">Prefer:</span> TLS · AEAD · HMAC · Ed25519 · Argon2id · KMS<br><span class="red">Avoid:</span> custom crypto · disabled verification · hardcoded keys · ignored errors</div>
+      </div>
+      <footer class="slide-footer"><span>Review checklist</span><span>84</span></footer>
+    </section>
+
+  </main>
+
+  <nav class="controls" aria-label="Presentation controls">
+    <div class="control-group">
+      <button class="icon-btn" id="prev" aria-label="Previous slide" title="Previous (←)">←</button>
+      <button class="icon-btn" id="next" aria-label="Next slide" title="Next (→ or Space)">→</button>
+      <button class="icon-btn" id="fullscreen" aria-label="Toggle fullscreen" title="Fullscreen (F)">⛶</button>
+      <button class="icon-btn" id="showHelp" aria-label="Show keyboard shortcuts" title="Help (?)">?</button>
+    </div>
+    <div class="progress-track" aria-hidden="true"><div class="progress" id="progress"></div></div>
+    <div class="counter" id="counter" aria-label="Slide position"></div>
+  </nav>
+
+  <aside class="help" id="help" hidden aria-label="Keyboard shortcuts">
+    <h3>Keyboard shortcuts</h3>
+    <dl>
+      <dt>→ Space</dt><dd>Next slide</dd>
+      <dt>←</dt><dd>Previous slide</dd>
+      <dt>Home / End</dt><dd>First / last slide</dd>
+      <dt>F</dt><dd>Toggle fullscreen</dd>
+      <dt>?</dt><dd>Toggle this help</dd>
+    </dl>
+  </aside>
+
+  <script>
+    (() => {
+      const slides = [...document.querySelectorAll('.slide')];
+      const prev = document.getElementById('prev');
+      const next = document.getElementById('next');
+      const fullscreen = document.getElementById('fullscreen');
+      const showHelp = document.getElementById('showHelp');
+      const help = document.getElementById('help');
+      const counter = document.getElementById('counter');
+      const progress = document.getElementById('progress');
+      const controls = document.querySelector('.controls');
+      let current = 0;
+      let idleTimer;
+
+      const clamp = value => Math.max(0, Math.min(slides.length - 1, value));
+
+      function render(target, updateHash = true) {
+        const nextIndex = clamp(target);
+        if (nextIndex === current && slides[current].classList.contains('active')) {
+          updateUI();
+          return;
+        }
+
+        slides.forEach((slide, index) => {
+          slide.classList.toggle('active', index === nextIndex);
+          slide.classList.toggle('leaving', index < nextIndex);
+          slide.setAttribute('aria-hidden', index === nextIndex ? 'false' : 'true');
+        });
+        current = nextIndex;
+        updateUI();
+
+        if (updateHash) history.replaceState(null, '', `#${current + 1}`);
+        document.title = `${slides[current].dataset.title} — Basic Go Cryptography`;
+      }
+
+      function updateUI() {
+        counter.textContent = `${String(current + 1).padStart(2, '0')} / ${String(slides.length).padStart(2, '0')}`;
+        progress.style.width = `${((current + 1) / slides.length) * 100}%`;
+        prev.disabled = current === 0;
+        next.disabled = current === slides.length - 1;
+      }
+
+      function toggleFullscreen() {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen?.();
+        } else {
+          document.exitFullscreen?.();
+        }
+      }
+
+      function wakeControls() {
+        controls.classList.remove('idle');
+        clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => controls.classList.add('idle'), 2200);
+      }
+
+      prev.addEventListener('click', () => render(current - 1));
+      next.addEventListener('click', () => render(current + 1));
+      fullscreen.addEventListener('click', toggleFullscreen);
+      showHelp.addEventListener('click', () => { help.hidden = !help.hidden; });
+      document.addEventListener('mousemove', wakeControls, { passive: true });
+      document.addEventListener('touchstart', wakeControls, { passive: true });
+
+      document.addEventListener('keydown', event => {
+        if (event.target.matches('a, button, input, textarea, select')) return;
+        if (['ArrowRight', 'ArrowDown', 'PageDown', ' '].includes(event.key)) {
+          event.preventDefault(); render(current + 1);
+        } else if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(event.key)) {
+          event.preventDefault(); render(current - 1);
+        } else if (event.key === 'Home') {
+          event.preventDefault(); render(0);
+        } else if (event.key === 'End') {
+          event.preventDefault(); render(slides.length - 1);
+        } else if (event.key.toLowerCase() === 'f') {
+          event.preventDefault(); toggleFullscreen();
+        } else if (event.key === '?') {
+          help.hidden = !help.hidden;
+        } else if (event.key === 'Escape' && !help.hidden) {
+          help.hidden = true;
+        }
+        wakeControls();
+      });
+
+      let touchX = null;
+      document.addEventListener('touchstart', event => { touchX = event.changedTouches[0].clientX; }, { passive: true });
+      document.addEventListener('touchend', event => {
+        if (touchX === null) return;
+        const delta = event.changedTouches[0].clientX - touchX;
+        if (Math.abs(delta) > 55) render(current + (delta < 0 ? 1 : -1));
+        touchX = null;
+      }, { passive: true });
+
+      window.addEventListener('hashchange', () => {
+        const index = Number(location.hash.slice(1)) - 1;
+        if (Number.isInteger(index)) render(index, false);
+      });
+
+      const initial = Number(location.hash.slice(1)) - 1;
+      current = Number.isInteger(initial) ? clamp(initial) : 0;
+      slides.forEach((slide, index) => {
+        slide.classList.toggle('active', index === current);
+        slide.classList.toggle('leaving', index < current);
+        slide.setAttribute('aria-hidden', index === current ? 'false' : 'true');
+      });
+      updateUI();
+      wakeControls();
+    })();
+  </script>
+</body>
+</html>

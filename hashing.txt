@@ -1,0 +1,5 @@
+Next I would like you explain more about hashing.
+
+What is it about and what is it used for.
+Example code for each use cases.
+Example diagram for make it easy to understand.
