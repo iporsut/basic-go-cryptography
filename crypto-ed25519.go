@@ -5,6 +5,7 @@ package main
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"fmt"
 	"log"
 )
 
@@ -16,9 +17,13 @@ func main() {
 
 	message := []byte("example message")
 	signature := ed25519.Sign(privateKey, message)
+
 	// signature = signature[:len(signature)-1] // remove last byte to simulate tampering
+	message = append(message, 0x00) // append a byte to simulate tampering
 	valid := ed25519.Verify(publicKey, message, signature)
 	if !valid {
 		log.Fatal("signature verification failed")
 	}
+
+	fmt.Println("signature verification succeeded")
 }

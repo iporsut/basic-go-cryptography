@@ -12,6 +12,7 @@ import (
 )
 
 func main() {
+	// make random key
 	key := make([]byte, 32)
 	if _, err := rand.Read(key); err != nil {
 		log.Fatal(err)
@@ -42,8 +43,8 @@ func main() {
 
 	sealed := aead.Seal(nonce, nonce, plaintext, aad)
 
-	fmt.Println(hex.EncodeToString(sealed))
-	fmt.Println(hex.EncodeToString(nonce))
+	fmt.Println("sealed:", hex.EncodeToString(sealed))
+	fmt.Println("nonce:", hex.EncodeToString(nonce))
 
 	// decrypt the sealed ciphertext
 	// we need to use same key, nonce, and aad to decrypt

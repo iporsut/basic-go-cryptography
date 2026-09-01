@@ -1,8 +1,8 @@
-// go:build ignore
+//go:build ignore
+
 package main
 
 import (
-	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 
@@ -10,8 +10,8 @@ import (
 )
 
 func main() {
-	salt := make([]byte, 16)
-	rand.Read(salt)
+	salt, _ := hex.DecodeString("59d7bf2721948c9c55d2c169db124c7f")
+	fmt.Println("salt:", hex.EncodeToString(salt))
 
 	password := []byte("example password")
 

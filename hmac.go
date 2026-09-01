@@ -5,6 +5,8 @@ package main
 import (
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 )
 
 func main() {
@@ -18,6 +20,8 @@ func main() {
 	expectedMac := hmac.New(sha256.New, key)
 	expectedMac.Write(data)
 	expectedSignature := expectedMac.Sum(nil)
+
+	fmt.Println("Signature:", hex.EncodeToString(signature))
 
 	if hmac.Equal(signature, expectedSignature) {
 		println("Signature is valid")

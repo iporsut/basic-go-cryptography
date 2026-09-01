@@ -14,7 +14,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(token)
+	fmt.Println("random token 32 bytes", token)
 }
 
 func newToken() (string, error) {

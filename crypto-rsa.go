@@ -36,7 +36,8 @@ func main() {
 		log.Fatal(err)
 	}
 
-	fmt.Println(hex.EncodeToString(ciphertext))
+	fmt.Println("Ciphertext:", hex.EncodeToString(ciphertext))
+	fmt.Println()
 
 	decrypted, err := rsa.DecryptOAEP(
 		sha256.New(),
